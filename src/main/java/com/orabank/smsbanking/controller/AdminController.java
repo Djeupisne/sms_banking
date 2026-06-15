@@ -63,7 +63,8 @@ public class AdminController {
                 transferRequest.getAmount(),
                 maskPhoneNumber(transferRequest.getRecipientPhone()));
 
-        Double amount = transferRequest.getAmount();
+        // ✅ Convertir BigDecimal en Double
+        Double amount = transferRequest.getAmount().doubleValue();
         Double fees = Math.ceil(amount * 0.1);
         Double totalAmount = amount + fees;
         String transactionRef = UUID.randomUUID().toString();
@@ -122,7 +123,6 @@ public class AdminController {
                         .body("{\"status\": \"error\", \"message\": \"Solde insuffisant\"}");
             }
 
-            // ✅ LOG DE SUCCÈS
             loggingService.logTransaction("ADMIN_TRANSFER", "MOBILE_MONEY", amount,
                     transferRequest.getAccountNumber(), null, null, transferRequest.getRecipientPhone(),
                     null, transactionRef, "SUCCESS", null, fees, totalAmount, httpServletRequest);
@@ -154,7 +154,8 @@ public class AdminController {
                 maskAccountNumber(request.getTargetAccountNumber()),
                 request.getAmount());
 
-        Double amount = request.getAmount();
+        // ✅ Convertir BigDecimal en Double
+        Double amount = request.getAmount().doubleValue();
         String transactionRef = UUID.randomUUID().toString();
 
         try {
@@ -212,7 +213,6 @@ public class AdminController {
                     request.getDescription() != null ? request.getDescription() : "Virement interne"
             );
 
-            // ✅ LOG DE SUCCÈS
             loggingService.logTransaction("ADMIN_TRANSFER", "VIREMENT_INTERNE", amount,
                     request.getSourceAccountNumber(), request.getTargetAccountNumber(), null, null,
                     request.getDescription(), transactionRef, "SUCCESS", null, 0.0, amount, httpServletRequest);
@@ -242,7 +242,8 @@ public class AdminController {
         log.info("Demande de crédit manuel - Compte: {}, Montant: {}",
                 maskAccountNumber(request.getAccountNumber()), request.getAmount());
 
-        Double amount = request.getAmount();
+        // ✅ Convertir BigDecimal en Double
+        Double amount = request.getAmount().doubleValue();
         String transactionRef = UUID.randomUUID().toString();
 
         try {
@@ -278,7 +279,6 @@ public class AdminController {
             transaction.setCreatedAt(LocalDateTime.now());
             transactionRepository.save(transaction);
 
-            // ✅ LOG DE SUCCÈS
             loggingService.logTransaction("ADMIN_CREDIT", "CREDIT_MANUEL", amount,
                     null, request.getAccountNumber(), null, null,
                     request.getDescription(), transactionRef, "SUCCESS", null, 0.0, amount, httpServletRequest);
@@ -308,7 +308,8 @@ public class AdminController {
         log.info("Demande de débit manuel - Compte: {}, Montant: {}",
                 maskAccountNumber(request.getAccountNumber()), request.getAmount());
 
-        Double amount = request.getAmount();
+        // ✅ Convertir BigDecimal en Double
+        Double amount = request.getAmount().doubleValue();
         String transactionRef = UUID.randomUUID().toString();
 
         try {
@@ -352,7 +353,6 @@ public class AdminController {
             transaction.setCreatedAt(LocalDateTime.now());
             transactionRepository.save(transaction);
 
-            // ✅ LOG DE SUCCÈS
             loggingService.logTransaction("ADMIN_DEBIT", "DEBIT_MANUEL", amount,
                     request.getAccountNumber(), null, null, null,
                     request.getDescription(), transactionRef, "SUCCESS", null, 0.0, amount, httpServletRequest);
