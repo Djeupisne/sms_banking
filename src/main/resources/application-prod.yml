@@ -1,6 +1,6 @@
 spring:
   datasource:
-    # Compatible avec les variables Render et celles de ton application
+    # Compatible avec les variables Render et celles de l' application
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB:orabank_sms}}
     username: ${SPRING_DATASOURCE_USERNAME:${POSTGRES_USER:orabank_user}}
     password: ${SPRING_DATASOURCE_PASSWORD:${POSTGRES_PASSWORD:secure_password}}
@@ -62,9 +62,9 @@ jwt:
     secret: ${JWT_RESET_PASSWORD_SECRET:${JWT_SECRET}}
     expiration-ms: ${JWT_RESET_PASSWORD_EXPIRATION:1800000}
 
-# =============================================================================
+
 # CONFIGURATION SMS GATEWAYS TOGO (MOOV & TOGOCEL) - PRODUCTION
-# =============================================================================
+
 moov:
   sms:
     enabled: ${MOOV_SMS_ENABLED:false}

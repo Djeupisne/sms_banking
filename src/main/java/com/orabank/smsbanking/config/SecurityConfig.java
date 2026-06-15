@@ -55,6 +55,9 @@ public class SecurityConfig {
     @Value("${admin.password:#{null}}")
     private String adminPassword;
 
+    @Value("${app.frontend.url:http://localhost:3001}")
+    private String frontendUrl;
+
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http, HandlerMappingIntrospector introspector) throws Exception {
         MvcRequestMatcher.Builder mvcMatcherBuilder = new MvcRequestMatcher.Builder(introspector);
@@ -137,7 +140,10 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(List.of("http://localhost:3001", "http://localhost:3000"));
+
+        // ✅ Correction : Utilise la variable d'environnement pour l'origine autorisée
+        log.info("Configuration CORS pour l'origine: {}", frontendUrl);
+        configuration.setAllowedOrigins(List.of(frontendUrl));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
         configuration.setAllowedHeaders(List.of("*"));
         configuration.setAllowCredentials(true);
