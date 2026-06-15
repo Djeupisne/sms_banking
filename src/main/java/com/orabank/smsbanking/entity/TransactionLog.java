@@ -7,10 +7,11 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "transaction_logs")  // ✅ Plus d'index ici
+@Table(name = "transaction_logs")
 @Data
 @Builder
 @NoArgsConstructor
@@ -34,8 +35,8 @@ public class TransactionLog {
     @Column(nullable = false)
     private String transactionType;
 
-    @Column(nullable = false)
-    private Double amount;
+    @Column(nullable = false, precision = 15, scale = 2)
+    private BigDecimal amount;
 
     private String sourceAccount;
     private String targetAccount;
@@ -60,9 +61,12 @@ public class TransactionLog {
     private String userAgent;
 
     @CreatedDate
-    @Column(nullable = false, updatable = false)
+    @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
-    private Double feesAmount;
-    private Double totalAmount;
+    @Column(precision = 15, scale = 2)
+    private BigDecimal feesAmount;
+
+    @Column(precision = 15, scale = 2)
+    private BigDecimal totalAmount;
 }
