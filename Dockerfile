@@ -3,10 +3,12 @@ FROM eclipse-temurin:17-jdk-alpine AS builder
 
 WORKDIR /app
 
-# Copy pom.xml and download dependencies
+# Install Maven
+RUN apk add --no-cache maven
+
+# Copy pom.xml and download dependencies (layer caching)
 COPY pom.xml .
-RUN apk add --no-cache maven && \
-    mvn dependency:go-offline -B
+RUN mvn dependency:go-offline -B
 
 # Copy source code and build
 COPY src ./src
@@ -28,9 +30,6 @@ RUN apk add --no-cache tzdata wget
 
 # Copy built jar from builder stage
 COPY --from=builder /app/target/*.jar app.jar
-
-# Copy configuration files (optionnel si tout est dans le jar)
-COPY src/main/resources/application*.yml ./config/ 2>/dev/null || true
 
 # Set ownership to non-root user
 RUN chown -R appuser:appgroup /app
