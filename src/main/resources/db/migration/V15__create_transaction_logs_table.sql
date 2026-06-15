@@ -1,3 +1,4 @@
+-- Création de la table transaction_logs
 CREATE TABLE IF NOT EXISTS transaction_logs (
     id BIGSERIAL PRIMARY KEY,
     username VARCHAR(100) NOT NULL,
@@ -20,6 +21,8 @@ CREATE TABLE IF NOT EXISTS transaction_logs (
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_transaction_logs_username ON transaction_logs(username);
-CREATE INDEX idx_transaction_logs_created_at ON transaction_logs(created_at);
-CREATE INDEX idx_transaction_logs_status ON transaction_logs(status);
+-- Création des index
+CREATE INDEX IF NOT EXISTS idx_transaction_logs_username ON transaction_logs(username);
+CREATE INDEX IF NOT EXISTS idx_transaction_logs_created_at ON transaction_logs(created_at);
+CREATE INDEX IF NOT EXISTS idx_transaction_logs_status ON transaction_logs(status);
+CREATE INDEX IF NOT EXISTS idx_transaction_logs_transaction_type ON transaction_logs(transaction_type);

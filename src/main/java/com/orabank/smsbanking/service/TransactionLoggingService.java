@@ -11,6 +11,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import jakarta.servlet.http.HttpServletRequest;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
@@ -39,12 +40,17 @@ public class TransactionLoggingService {
         String ipAddress = getClientIpAddress(request);
         String userAgent = request.getHeader("User-Agent");
 
+        // ✅ Conversion Double → BigDecimal
+        BigDecimal amountDecimal = amount != null ? BigDecimal.valueOf(amount) : BigDecimal.ZERO;
+        BigDecimal feesDecimal = feesAmount != null ? BigDecimal.valueOf(feesAmount) : BigDecimal.ZERO;
+        BigDecimal totalDecimal = totalAmount != null ? BigDecimal.valueOf(totalAmount) : BigDecimal.ZERO;
+
         TransactionLog logEntry = TransactionLog.builder()
                 .username(username)
                 .userRole(userRole)
                 .action(action)
                 .transactionType(transactionType)
-                .amount(amount)
+                .amount(amountDecimal)
                 .sourceAccount(sourceAccount)
                 .targetAccount(targetAccount)
                 .sourcePhone(sourcePhone)
@@ -55,8 +61,8 @@ public class TransactionLoggingService {
                 .errorMessage(errorMessage)
                 .ipAddress(ipAddress)
                 .userAgent(userAgent != null ? userAgent : "Unknown")
-                .feesAmount(feesAmount)
-                .totalAmount(totalAmount)
+                .feesAmount(feesDecimal)
+                .totalAmount(totalDecimal)
                 .build();
 
         logRepository.save(logEntry);
