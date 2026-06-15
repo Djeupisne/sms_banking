@@ -1,0 +1,146 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/orabank_sms_dev
+    username: orabank_user
+    password: secure_password
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: true
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    out-of-order: true # Ajouté pour éviter les conflits si les migrations sont désordonnées
+  redis:
+    host: ${REDIS_HOST:localhost}
+    port: ${REDIS_PORT:6379}
+    password: ${REDIS_PASSWORD:}
+    ssl: false
+    timeout: 5000ms
+    lettuce:
+      pool:
+        max-active: 8
+        max-idle: 8
+        min-idle: 0
+  mail:
+    host: smtp-relay.brevo.com
+    port: 587
+    username: ${BREVO_SMTP_USERNAME:}
+    password: ${BREVO_SMTP_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
+
+logging:
+  level:
+    com.orabank.smsbanking: DEBUG
+    org.springframework.security: DEBUG
+    org.hibernate.SQL: DEBUG
+
+server:
+  port: 8080
+
+twilio:
+  enabled: false
+  account:
+    sid: ACXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+  auth:
+    token: your_dev_auth_token
+  phone:
+    number: +1234567890
+
+otp:
+  length: 6
+  validity:
+    minutes: 5
+  secret: O7Z7S7N7T7E7N7C7R7Y7P7T7K7E7Y
+
+rate:
+  limit:
+    requests: 10
+    window:
+      minutes: 1
+
+encryption:
+  key: 01234567890123456789012345678901
+
+core:
+  banking:
+    base:
+      url: http://localhost:8082/api
+    mock:
+      enabled: true
+
+rate-limiting:
+  enabled: true
+
+webhook:
+  auth:
+    method: jwt
+  signature:
+    enabled: false
+    max-age-ms: 300000
+  api:
+    key: orabank_webhook_api_key_2024_secure_key
+    enabled: false
+
+management:
+  tracing:
+    sampling:
+      probability: 0.0
+  zipkin:
+    tracing:
+      enabled: false
+
+admin:
+  password: admin123
+user:
+  password: user123
+
+jwt:
+  secret: "DevLocalSecretKeyThatIsAtLeast32CharsLongForHS256Algorithm123!"
+  expiration-ms: 3600000
+  reset-password:
+    secret: "ResetPasswordSecretKey2024ForOrabankSMS"
+    expiration-ms: 1800000
+
+mobile-money:
+  fees:
+    account-id: 1
+    percentage: 1.0
+    min-amount: 100
+    max-amount: 5000
+    enabled: true
+
+internal-transfer:
+  fees:
+    enabled: true
+    percentage: 0.5
+    min-amount: 50
+    max-amount: 2000
+    account-number: FEE_INTERNAL_TRANSFER_001
+
+# ============================================================
+# CONFIGURATION BREVO — valeurs lues depuis le fichier .env
+# ============================================================
+brevo:
+  api:
+    key: ${BREVO_API_KEY:}
+  sender:
+    email: ${BREVO_SENDER_EMAIL:oualoumidjeupisne@gmail.com}
+    name: ${BREVO_SENDER_NAME:Orabank SMS Banking}
+
+app:
+  frontend:
+    url: ${FRONTEND_URL:http://localhost:3001}

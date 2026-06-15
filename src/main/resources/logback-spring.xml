@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration scan="true" scanPeriod="30 seconds">
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+    
+    <!-- Property for JSON logging in production -->
+    <springProperty scope="context" name="LOG_JSON" source="logging.json.enabled" defaultValue="false"/>
+    <springProperty scope="context" name="APP_NAME" source="spring.application.name" defaultValue="orabank-sms-banking"/>
+    
+    <!-- Console Appender with masking for sensitive information -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <customFields>{"app":"${APP_NAME}","environment":"${SPRING_PROFILES_ACTIVE:dev}"}</customFields>
+            <includeMdc>true</includeMdc>
+            <includeCallerData>false</includeCallerData>
+        </encoder>
+    </appender>
+    
+    <!-- File Appender with rolling policy -->
+    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>logs/orabank-sms-banking.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <fileNamePattern>logs/orabank-sms-banking.%d{yyyy-MM-dd}.%i.gz</fileNamePattern>
+            <timeBasedFileNamingAndTriggeringPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP">
+                <maxFileSize>100MB</maxFileSize>
+            </timeBasedFileNamingAndTriggeringPolicy>
+            <maxHistory>30</maxHistory>
+            <totalSizeCap>5GB</totalSizeCap>
+        </rollingPolicy>
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <customFields>{"app":"${APP_NAME}"}</customFields>
+            <includeMdc>true</includeMdc>
+        </encoder>
+    </appender>
+    
+    <!-- Async Appender for better performance -->
+    <appender name="ASYNC_FILE" class="ch.qos.logback.classic.AsyncAppender">
+        <queueSize>512</queueSize>
+        <discardingThreshold>0</discardingThreshold>
+        <includeCallerData>false</includeCallerData>
+        <appender-ref ref="FILE"/>
+    </appender>
+    
+    <!-- Root logger -->
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="ASYNC_FILE"/>
+    </root>
+    
+    <!-- Specific loggers -->
+    <logger name="com.orabank.smsbanking" level="DEBUG"/>
+    <logger name="org.springframework.security" level="INFO"/>
+    <logger name="org.springframework.web" level="INFO"/>
+    <logger name="org.hibernate.SQL" level="WARN"/>
+    <logger name="io.github.resilience4j" level="INFO"/>
+    <logger name="io.micrometer" level="INFO"/>
+    
+    <!-- MDC filter pour ajouter des informations de contexte -->
+    <turboFilter class="ch.qos.logback.classic.turbo.MDCFilter">
+        <MDCKey>traceId</MDCKey>
+        <value>.*</value>
+        <name>traceId</name>
+    </turboFilter>
+    
+    <turboFilter class="ch.qos.logback.classic.turbo.MDCFilter">
+        <MDCKey>spanId</MDCKey>
+        <value>.*</value>
+        <name>spanId</name>
+    </turboFilter>
+</configuration>

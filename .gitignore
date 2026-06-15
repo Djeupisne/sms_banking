@@ -1,0 +1,90 @@
+# Build artifacts
+target/
+build/
+out/
+*.class
+*.o
+*.obj
+*.exe
+*.dll
+*.so
+*.a
+*.out
+
+# Gradle / Maven
+.gradle/
+.gradle/wrapper/
+*.jar
+*.war
+*.ear
+*.iml
+
+# Node / Angular
+node_modules/
+dist/
+.angular/cache/
+package-lock.json
+yarn.lock
+
+# Python (si utilisé)
+venv/
+.venv/
+__pycache__/
+.mypy_cache/
+.pytest_cache/
+
+# Logs & Coverage
+*.log
+coverage/
+htmlcov/
+.coverage
+test-results/
+surefire-reports/
+failsafe-reports/
+
+# Environment files (secrets)
+.env
+.env.local
+*.env.*
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*.tmp
+*.code-workspace
+.classpath
+.project
+.settings/
+.history/
+
+# System files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Compressed files
+*.zip
+*.gz
+*.tar
+*.tgz
+*.bz2
+*.xz
+*.7z
+*.rar
+*.zst
+*.lz4
+*.lzh
+*.cab
+*.arj
+*.rpm
+*.deb
+*.Z
+*.lz
+*.lzo
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.tar.zst

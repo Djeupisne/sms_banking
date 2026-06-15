@@ -1,0 +1,236 @@
+groups:
+  - name: orabank_alerts
+    interval: 30s
+    rules:
+      # =============================================================================
+      # ALERTES DE DISPONIBILITÉ
+      # =============================================================================
+      
+      # Application down
+      - alert: OrabankApplicationDown
+        expr: up{job="orabank-sms-banking"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: "🔴 Orabank SMS Banking est DOWN"
+          description: "L'application Orabank SMS Banking ne répond plus depuis plus d'une minute.\nInstance: {{ $labels.instance }}"
+
+      # Health check failed
+      - alert: OrabankHealthCheckFailed
+        expr: probe_success{job="orabank-sms-banking"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "❌ Health Check échoué"
+          description: "Le health check de l'application échoue depuis 2 minutes."
+
+      # =============================================================================
+      # ALERTES DE PERFORMANCE
+      # =============================================================================
+      
+      # Latence élevée (p95 > 1s)
+      - alert: OrabankHighLatencyP95
+        expr: histogram_quantile(0.95, sum(rate(http_server_requests_seconds_bucket{job="orabank-sms-banking", status!~"5.."}[5m])) by (le)) > 1
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "⚠️ Latence élevée détectée (p95 > 1s)"
+          description: "La latence au 95ème percentile dépasse 1 seconde depuis 5 minutes.\nValeur actuelle: {{ $value }}s"
+
+      # Latence critique (p95 > 2s)
+      - alert: OrabankCriticalLatencyP95
+        expr: histogram_quantile(0.95, sum(rate(http_server_requests_seconds_bucket{job="orabank-sms-banking", status!~"5.."}[5m])) by (le)) > 2
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "🔴 Latence CRITIQUE (p95 > 2s)"
+          description: "La latence au 95ème percentile dépasse 2 secondes!\nValeur actuelle: {{ $value }}s"
+
+      # Ralentissement base de données
+      - alert: OrabankDatabaseSlowQueries
+        expr: rate(hikaricp_connections_timeout_total{job="orabank-sms-banking"}[5m]) > 0.1
+        for: 3m
+        labels:
+          severity: warning
+          team: database
+        annotations:
+          summary: "🐢 Requêtes SQL lentes détectées"
+          description: "Des timeouts de connexions HikariCP sont détectés."
+
+      # =============================================================================
+      # ALERTES D'ERREURS
+      # =============================================================================
+      
+      # Taux d'erreur élevé (> 5%)
+      - alert: OrabankHighErrorRate
+        expr: sum(rate(http_server_requests_seconds_count{job="orabank-sms-banking", status=~"5.."}[5m])) / sum(rate(http_server_requests_seconds_count{job="orabank-sms-banking"}[5m])) > 0.05
+        for: 3m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: "🔴 Taux d'erreur HTTP élevé (> 5%)"
+          description: "Le taux d'erreurs HTTP 5xx dépasse 5% depuis 3 minutes.\nTaux actuel: {{ $value | humanizePercentage }}"
+
+      # Erreurs 5xx en augmentation
+      - alert: Orabank5xxErrorsSpike
+        expr: increase(http_server_requests_seconds_count{job="orabank-sms-banking", status=~"5.."}[1m]) > 10
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "⚠️ Pic d'erreurs 5xx détecté"
+          description: "Plus de 10 erreurs 5xx par minute depuis 2 minutes."
+
+      # =============================================================================
+      # ALERTES CIRCUIT BREAKER
+      # =============================================================================
+      
+      # Circuit breaker ouvert
+      - alert: OrabankCircuitBreakerOpen
+        expr: resilience4j_circuitbreaker_state{state="open"} == 1
+        for: 1m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: "🔓 Circuit Breaker OUVERT"
+          description: "Le circuit breaker '{{ $labels.name }}' est ouvert depuis plus d'une minute. Les appels sont rejetés."
+
+      # Circuit breaker en mode half-open
+      - alert: OrabankCircuitBreakerHalfOpen
+        expr: resilience4j_circuitbreaker_state{state="half_open"} == 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "⚠️ Circuit Breaker en HALF-OPEN"
+          description: "Le circuit breaker '{{ $labels.name }}' est en mode half-open depuis 5 minutes."
+
+      # =============================================================================
+      # ALERTES BASE DE DONNÉES
+      # =============================================================================
+      
+      # Connexions DB épuisées
+      - alert: OrabankDatabaseConnectionsExhausted
+        expr: hikaricp_active_connections{job="orabank-sms-banking"} / hikaricp_max_connections{job="orabank-sms-banking"} > 0.9
+        for: 3m
+        labels:
+          severity: critical
+          team: database
+        annotations:
+          summary: "🔴 Connexions DB presque épuisées (> 90%)"
+          description: "Le pool de connexions HikariCP est utilisé à plus de 90%.\nUtilisation actuelle: {{ $value | humanizePercentage }}"
+
+      # Deadlocks détectés
+      - alert: OrabankDatabaseDeadlocks
+        expr: increase(postgres_locks_deadlock{job="postgres"}[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+          team: database
+        annotations:
+          summary: "⚠️ Deadlocks PostgreSQL détectés"
+          description: "Des deadlocks ont été détectés sur PostgreSQL."
+
+      # =============================================================================
+      # ALERTES REDIS
+      # =============================================================================
+      
+      # Redis down
+      - alert: OrabankRedisDown
+        expr: redis_up{job="redis"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: infrastructure
+        annotations:
+          summary: "🔴 Redis est DOWN"
+          description: "Redis ne répond plus depuis plus d'une minute."
+
+      # Utilisation mémoire Redis élevée
+      - alert: OrabankRedisHighMemory
+        expr: redis_memory_used_bytes{job="redis"} / redis_memory_max_bytes{job="redis"} > 0.85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "⚠️ Mémoire Redis élevée (> 85%)"
+          description: "Redis utilise plus de 85% de sa mémoire maximale.\nUtilisation: {{ $value | humanizePercentage }}"
+
+      # =============================================================================
+      # ALERTES SYSTÈME
+      # =============================================================================
+      
+      # CPU élevé
+      - alert: OrabankHighCPU
+        expr: process_cpu_usage{job="orabank-sms-banking"} > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "⚠️ Utilisation CPU élevée (> 80%)"
+          description: "L'application utilise plus de 80% du CPU depuis 5 minutes.\nCPU: {{ $value | humanizePercentage }}"
+
+      # Mémoire JVM élevée
+      - alert: OrabankHighMemoryUsage
+        expr: jvm_memory_used_bytes{job="orabank-sms-banking", area="heap"} / jvm_memory_max_bytes{job="orabank-sms-banking", area="heap"} > 0.85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "⚠️ Mémoire JVM élevée (> 85%)"
+          description: "Le heap JVM est utilisé à plus de 85%.\nUtilisation: {{ $value | humanizePercentage }}"
+
+      # GC trop fréquent
+      - alert: OrabankFrequentGC
+        expr: rate(jvm_gc_pause_seconds_count{job="orabank-sms-banking"}[5m]) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "⚠️ Garbage Collector trop fréquent"
+          description: "Plus d'un GC par seconde en moyenne sur les 5 dernières minutes."
+
+      # =============================================================================
+      # ALERTES MÉTIER
+      # =============================================================================
+      
+      # Volume SMS anormalement bas
+      - alert: OrabankLowSMSVolume
+        expr: sum(increase(sms_processed_total{job="orabank-sms-banking"}[1h])) < 10
+        for: 30m
+        labels:
+          severity: warning
+          team: operations
+        annotations:
+          summary: "⚠️ Volume SMS anormalement bas"
+          description: "Moins de 10 SMS traités dans la dernière heure. Vérifier le connecteur SMS."
+
+      # Échecs OTP élevés
+      - alert: OrabankHighOTPFailures
+        expr: sum(rate(otp_validation_failures_total{job="orabank-sms-banking"}[5m])) / sum(rate(otp_validation_attempts_total{job="orabank-sms-banking"}[5m])) > 0.3
+        for: 5m
+        labels:
+          severity: warning
+          team: security
+        annotations:
+          summary: "⚠️ Taux d'échec OTP élevé (> 30%)"
+          description: "Plus de 30% des validations OTP échouent. Possible attaque ou problème technique."
+
+      # Transactions Mobile Money en échec
+      - alert: OrabankMobileMoneyFailures
+        expr: sum(rate(mobile_money_transactions_failed_total{job="orabank-sms-banking"}[5m])) / sum(rate(mobile_money_transactions_total{job="orabank-sms-banking"}[5m])) > 0.1
+        for: 5m
+        labels:
+          severity: critical
+          team: payments
+        annotations:
+          summary: "🔴 Échecs Mobile Money élevés (> 10%)"
+          description: "Plus de 10% des transactions Mobile Money échouent."

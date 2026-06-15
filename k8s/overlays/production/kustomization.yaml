@@ -1,0 +1,93 @@
+# Overlay Production - Orabank SMS Banking
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: orabank-sms-banking-prod
+
+resources:
+  - ../../base
+
+namePrefix: prod-
+
+replicas:
+  - name: orabank-sms-banking
+    count: 5
+
+patches:
+  # Augmenter les replicas pour production
+  - patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 5
+    target:
+      kind: Deployment
+      name: orabank-sms-banking
+  
+  # Ressources augmentées pour production
+  - patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/cpu
+        value: "1000m"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/memory
+        value: "1536Mi"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/cpu
+        value: "4000m"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/memory
+        value: "4Gi"
+    target:
+      kind: Deployment
+      name: orabank-sms-banking
+
+  # Modifier l'ingress pour production
+  - patch: |-
+      - op: replace
+        path: /spec/rules/0/host
+        value: api.orabank.com
+      - op: replace
+        path: /spec/tls/0/hosts/0
+        value: api.orabank.com
+      - op: replace
+        path: /spec/tls/0/secretName
+        value: prod-orabank-tls-secret
+    target:
+      kind: Ingress
+      name: orabank-sms-banking
+
+  # PDB plus strict pour production
+  - patch: |-
+      - op: replace
+        path: /spec/minAvailable
+        value: 3
+    target:
+      kind: PodDisruptionBudget
+      name: orabank-sms-banking-pdb
+
+configMapGenerator:
+  - name: orabank-config
+    behavior: merge
+    literals:
+      - logging.level.root=WARN
+      - logging.level.com.orabank=WARN
+      - management.endpoints.web.exposure.include=health,info,prometheus
+
+secretGenerator:
+  - name: orabank-db-credentials
+    behavior: merge
+    literals:
+      - host=postgres-primary.postgresql.svc.cluster.local
+      - database=orabank_sms_prod
+      - username=orabank_app_prod
+      - password=PRODUCTION_PASSWORD_USE_SECRETS_MANAGER
+  
+  - name: orabank-webhook-secrets
+    behavior: merge
+    literals:
+      - hmac-secret=PRODUCTION_HMAC_SECRET_USE_AWS_SECRETS_MANAGER_OR_VAULT
+      - otp-master-secret=PRODUCTION_OTP_MASTER_SECRET_USE_SECRETS_MANAGER
+
+images:
+  - name: ghcr.io/orabank/sms-banking
+    newTag: v1.0.0

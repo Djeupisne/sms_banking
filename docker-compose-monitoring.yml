@@ -1,0 +1,135 @@
+version: '3.8'
+
+# ============================================================
+# STACK DE MONITORING COMPLÈTE POUR ORABANK SMS BANKING
+# ============================================================
+# Services: Prometheus, Grafana, Zipkin, ELK (optionnel)
+# Usage: docker-compose -f docker-compose-monitoring.yml up -d
+# ============================================================
+
+services:
+  # ---------------------------------------------------------
+  # PROMETHEUS - Collecte et stockage des métriques
+  # ---------------------------------------------------------
+  prometheus:
+    image: prom/prometheus:v2.47.0
+    container_name: orabank_prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.enable-lifecycle'
+    networks:
+      - monitoring
+
+  # ---------------------------------------------------------
+  # GRAFANA - Visualisation et dashboards
+  # ---------------------------------------------------------
+  grafana:
+    image: grafana/grafana:10.1.0
+    container_name: orabank_grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-piechart-panel
+      - GF_SERVER_ROOT_URL=http://localhost:3000
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards
+    depends_on:
+      - prometheus
+    networks:
+      - monitoring
+
+  # ---------------------------------------------------------
+  # ZIPKIN - Tracing distribué
+  # ---------------------------------------------------------
+  zipkin:
+    image: openzipkin/zipkin:2.24
+    container_name: orabank_zipkin
+    restart: unless-stopped
+    ports:
+      - "9411:9411"
+    environment:
+      - STORAGE_TYPE=mem
+      - JAVA_OPTS=-Xms1g -Xmx2g
+    networks:
+      - monitoring
+
+  # ---------------------------------------------------------
+  # LOKI - Logging aggregé (alternative légère à ELK)
+  # ---------------------------------------------------------
+  loki:
+    image: grafana/loki:2.9.0
+    container_name: orabank_loki
+    restart: unless-stopped
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./monitoring/loki-config.yml:/etc/loki/local-config.yaml
+      - loki_data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    networks:
+      - monitoring
+
+  # ---------------------------------------------------------
+  # PROMTAIL - Collecteur de logs pour Loki
+  # ---------------------------------------------------------
+  promtail:
+    image: grafana/promtail:2.9.0
+    container_name: orabank_promtail
+    restart: unless-stopped
+    volumes:
+      - ./logs:/var/log/app
+      - ./monitoring/promtail-config.yml:/etc/promtail/config.yml
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: -config.file=/etc/promtail/config.yml
+    depends_on:
+      - loki
+    networks:
+      - monitoring
+
+  # ---------------------------------------------------------
+  # NODE EXPORTER - Métriques système
+  # ---------------------------------------------------------
+  node-exporter:
+    image: prom/node-exporter:v1.6.1
+    container_name: orabank_node_exporter
+    restart: unless-stopped
+    ports:
+      - "9100:9100"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.ignored-mount-points="^/(sys|proc|dev|host|etc)($$|/)"'
+    networks:
+      - monitoring
+
+volumes:
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+  loki_data:
+    driver: local
+
+networks:
+  monitoring:
+    driver: bridge
+    name: orabank_monitoring

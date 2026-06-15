@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: orabank-sms-banking
+  labels:
+    app: orabank-sms-banking
+    team: backend

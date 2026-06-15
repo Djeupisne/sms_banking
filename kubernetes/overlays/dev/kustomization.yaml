@@ -1,0 +1,43 @@
+# Overlay de développement
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+bases:
+  - ../../base
+
+namePrefix: dev-
+
+commonLabels:
+  environment: development
+
+replicas:
+  - name: orabank-sms-banking
+    count: 2
+
+patchesStrategicMerge:
+  - |-
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: orabank-sms-banking
+    spec:
+      template:
+        spec:
+          containers:
+            - name: sms-banking
+              resources:
+                requests:
+                  cpu: "250m"
+                  memory: "512Mi"
+                limits:
+                  cpu: "1000m"
+                  memory: "1.5Gi"
+              env:
+                - name: SPRING_PROFILES_ACTIVE
+                  value: "dev"
+                - name: LOGGING_LEVEL_COM_ORABANK
+                  value: "DEBUG"
+
+images:
+  - name: orabank/sms-banking
+    newTag: dev-latest

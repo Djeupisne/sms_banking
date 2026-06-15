@@ -1,0 +1,228 @@
+spring:
+  application:
+    name: orabank-sms-banking
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB:orabank_sms}
+    username: ${POSTGRES_USER:orabank_user}
+    password: ${POSTGRES_PASSWORD:secure_password}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  redis:
+    host: ${REDIS_HOST:localhost}
+    port: ${REDIS_PORT:6379}
+    password: ${REDIS_PASSWORD:}
+    timeout: 2000ms
+  thymeleaf:
+    check-template-location: false
+
+server:
+  port: 8080
+  error:
+    include-message: always
+    include-binding-errors: always
+
+moov:
+  sms:
+    enabled: ${MOOV_SMS_ENABLED:true}
+    api:
+      key: ${MOOV_SMS_API_KEY:votre_cle_api_moov}
+      secret: ${MOOV_SMS_API_SECRET:votre_secret_api_moov}
+      url: ${MOOV_SMS_API_URL:https://api.moov.tg/sms/v1/send}
+    sender:
+      id: ${MOOV_SMS_SENDER_ID:ORABANK}
+
+togocel:
+  sms:
+    enabled: ${TOGOCEL_SMS_ENABLED:true}
+    api:
+      key: ${TOGOCEL_SMS_API_KEY:votre_cle_api_togocel}
+      secret: ${TOGOCEL_SMS_API_SECRET:votre_secret_api_togocel}
+      url: ${TOGOCEL_SMS_API_URL:https://api.togocel.com/sms/v1/send}
+    sender:
+      id: ${TOGOCEL_SMS_SENDER_ID:ORABANK}
+
+sms:
+  gateway:
+    prefer:
+      moov: ${SMS_GATEWAY_PREFER_MOOV:true}
+
+logging:
+  level:
+    com.orabank.smsbanking: INFO
+    org.springframework.security: INFO
+    org.springframework.web: INFO
+    io.github.resilience4j: INFO
+    io.micrometer: INFO
+  json:
+    enabled: ${LOGGING_JSON_ENABLED:true}
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - traceId=%X{traceId:-N/A} spanId=%X{spanId:-N/A} - %msg%n"
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics,threaddump,heapdump,gateway,circuitbreakers,retries,ratelimiters
+  endpoint:
+    health:
+      show-details: always
+    probes:
+      enabled: true
+    info:
+      enabled: true
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+        resilience4j.circuitbreaker.call.duration: true
+  tracing:
+    enabled: false
+    sampling:
+      probability: 0.0
+  zipkin:
+    tracing:
+      enabled: false
+    endpoint: ${ZIPKIN_ENDPOINT:http://localhost:9411/api/v2/spans}
+
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        registerHealthIndicator: true
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        permittedNumberOfCallsInHalfOpenState: 3
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        waitDurationInOpenState: 30s
+        failureRateThreshold: 50
+        eventConsumerBufferSize: 10
+        recordExceptions:
+          - java.io.IOException
+          - java.net.ConnectException
+          - java.util.concurrent.TimeoutException
+    instances:
+      coreBankingApi:
+        baseConfig: default
+      moovSmsGateway:
+        baseConfig: default
+      togocelSmsGateway:
+        baseConfig: default
+  retry:
+    configs:
+      default:
+        maxAttempts: 3
+        waitDuration: 1s
+        enableExponentialBackoff: true
+        exponentialBackoffMultiplier: 2
+        retryExceptions:
+          - java.io.IOException
+          - java.net.ConnectException
+    instances:
+      coreBankingApi:
+        baseConfig: default
+      moovSmsGateway:
+        baseConfig: default
+      togocelSmsGateway:
+        baseConfig: default
+  ratelimiter:
+    configs:
+      default:
+        registerHealthIndicator: true
+        limitForPeriod: 10
+        limitRefreshPeriod: 1s
+        timeoutDuration: 500ms
+    instances:
+      coreBankingApi:
+        baseConfig: default
+      moovSmsGateway:
+        baseConfig: default
+      togocelSmsGateway:
+        baseConfig: default
+  timelimiter:
+    configs:
+      default:
+        timeoutDuration: 10s
+        cancelRunningFuture: true
+    instances:
+      coreBankingApi:
+        baseConfig: default
+      moovSmsGateway:
+        baseConfig: default
+      togocelSmsGateway:
+        baseConfig: default
+
+jwt:
+  secret: ${JWT_SECRET:ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijklmnopqrstuvwxyz0123456789AB}
+  expiration-ms: 3600000
+
+webhook:
+  auth:
+    method: ${WEBHOOK_AUTH_METHOD:jwt}
+  api:
+    key: ${WEBHOOK_API_KEY:orabank_webhook_api_key_2024_secure_key}
+    enabled: false
+  secret:
+    key: ${WEBHOOK_SECRET_KEY:votre_cle_secrete_webhook_tres_longue_et_securisee_32caracteres}
+  signature:
+    enabled: true
+    max-age-ms: 300000
+
+otp:
+  length: ${OTP_LENGTH:6}
+  validity:
+    minutes: ${OTP_VALIDITY_MINUTES:5}
+  master:
+    secret: ${OTP_MASTER_SECRET:ORABANK_MASTER_OTP_SECRET_2024_SECURE_KEY_MIN_32_CHARS}
+
+admin:
+  username: ${ADMIN_USERNAME:admin}
+  password: ${ADMIN_PASSWORD:changeme}
+
+user:
+  username: ${USER_USERNAME:user}
+  password: ${USER_PASSWORD:userDefaultPasswordChangeMe}
+
+rate:
+  limit:
+    requests: ${RATE_LIMIT_MAX_REQUESTS:5}
+    window:
+      minutes: 1
+    redis:
+      enabled: true
+
+encryption:
+  key: ${ENCRYPTION_KEY:your_32_character_encryptions_key}
+
+core:
+  banking:
+    base:
+      url: ${CORE_BANKING_BASE_URL:http://localhost:8081/api}
+    api:
+      key: ${CORE_BANKING_API_KEY:}
+      secret: ${CORE_BANKING_API_SECRET:}
+
+mobile-money:
+  fees:
+    account-id: ${MOBILE_MONEY_FEES_ACCOUNT_ID:1}
+    percentage: ${MOBILE_MONEY_FEES_PERCENTAGE:1.0}
+    min-amount: ${MOBILE_MONEY_FEES_MIN:100}
+    max-amount: ${MOBILE_MONEY_FEES_MAX:5000}
+    enabled: ${MOBILE_MONEY_FEES_ENABLED:true}

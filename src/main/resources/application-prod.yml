@@ -1,0 +1,120 @@
+spring:
+  datasource:
+    # ✅ Corrigé : Utilisation des variables injectées par Kubernetes
+    url: jdbc:postgresql://${POSTGRES_HOST}:${POSTGRES_PORT:5432}/${POSTGRES_DB}
+    username: ${POSTGRES_USER}
+    password: ${POSTGRES_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    open-in-view: false
+  redis:
+    host: ${REDIS_HOST}
+    port: ${REDIS_PORT}
+    password: ${REDIS_PASSWORD}
+    ssl: true   # Redis Cloud impose SSL
+
+logging:
+  level:
+    com.orabank.smsbanking: WARN
+    org.springframework.security: WARN
+  file:
+    name: /var/log/orabank-sms-banking/app.log
+
+server:
+  port: 8080
+  error:
+    include-message: never
+    include-binding-errors: never
+
+# En production, aucune valeur par défaut n'est tolérée pour le JWT.
+# Si JWT_SECRET manque, Spring Boot refusera de démarrer (Comportement attendu).
+jwt:
+  secret: ${JWT_SECRET}
+  expiration-ms: 3600000
+
+# =============================================================================
+# CONFIGURATION SMS GATEWAYS TOGO (MOOV & TOGOCEL) - PRODUCTION
+# =============================================================================
+moov:
+  sms:
+    enabled: ${MOOV_SMS_ENABLED:true}
+    api:
+      key: ${MOOV_SMS_API_KEY}
+      secret: ${MOOV_SMS_API_SECRET}
+      url: ${MOOV_SMS_API_URL:https://api.moov.tg/sms/v1/send}
+    sender:
+      id: ${MOOV_SMS_SENDER_ID:ORABANK}
+    connect:
+      timeout:
+        ms: ${MOOV_SMS_CONNECT_TIMEOUT_MS:5000}
+    read:
+      timeout:
+        ms: ${MOOV_SMS_READ_TIMEOUT_MS:10000}
+
+togocel:
+  sms:
+    enabled: ${TOGOCEL_SMS_ENABLED:true}
+    api:
+      key: ${TOGOCEL_SMS_API_KEY}
+      secret: ${TOGOCEL_SMS_API_SECRET}
+      url: ${TOGOCEL_SMS_API_URL:https://api.togocel.com/sms/v1/send}
+    sender:
+      id: ${TOGOCEL_SMS_SENDER_ID:ORABANK}
+    connect:
+      timeout:
+        ms: ${TOGOCEL_SMS_CONNECT_TIMEOUT_MS:5000}
+    read:
+      timeout:
+        ms: ${TOGOCEL_SMS_READ_TIMEOUT_MS:10000}
+
+sms:
+  gateway:
+    prefer:
+      moov: ${SMS_GATEWAY_PREFER_MOOV:true}
+
+otp:
+  length: 6
+  validity:
+    minutes: 5
+  rate:
+    limit:
+      requests: 5
+      window:
+        minutes: 1
+
+encryption:
+  key: ${ENCRYPTION_KEY}
+
+core:
+  banking:
+    base:
+      url: ${CORE_BANKING_BASE_URL}
+
+webhook:
+  secret:
+    key: ${WEBHOOK_SECRET_KEY}
+  signature:
+    enabled: true
+    max-age-ms: 300000
+
+    # ============================================================
+    # CONFIGURATION DES FRAIS MOBILE MONEY
+    # ============================================================
+    mobile-money:
+      fees:
+        # ID du compte entreprise qui recevra les frais (à créer dans votre base de données)
+        account-id: ${MOBILE_MONEY_FEES_ACCOUNT_ID:1}
+        # Pourcentage des frais (ex: 1.0 pour 1%)
+        percentage: ${MOBILE_MONEY_FEES_PERCENTAGE:1.0}
+        # Frais minimum en FCFA
+        min-amount: ${MOBILE_MONEY_FEES_MIN:100}
+        # Frais maximum en FCFA
+        max-amount: ${MOBILE_MONEY_FEES_MAX:5000}
+        # Activer/désactiver les frais
+        enabled: ${MOBILE_MONEY_FEES_ENABLED:true}

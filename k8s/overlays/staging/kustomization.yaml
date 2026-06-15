@@ -1,0 +1,82 @@
+# Overlay Staging - Orabank SMS Banking
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: orabank-sms-banking-staging
+
+resources:
+  - ../../base
+
+namePrefix: staging-
+
+replicas:
+  - name: orabank-sms-banking
+    count: 2
+
+patches:
+  # Réduire les ressources pour staging
+  - patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 2
+    target:
+      kind: Deployment
+      name: orabank-sms-banking
+  
+  - patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/cpu
+        value: "250m"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/memory
+        value: "512Mi"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/cpu
+        value: "1000m"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/memory
+        value: "1Gi"
+    target:
+      kind: Deployment
+      name: orabank-sms-banking
+
+  # Modifier l'ingress pour staging
+  - patch: |-
+      - op: replace
+        path: /spec/rules/0/host
+        value: staging-api.orabank.com
+      - op: replace
+        path: /spec/tls/0/hosts/0
+        value: staging-api.orabank.com
+      - op: replace
+        path: /spec/tls/0/secretName
+        value: staging-orabank-tls-secret
+    target:
+      kind: Ingress
+      name: orabank-sms-banking
+
+configMapGenerator:
+  - name: orabank-config
+    behavior: merge
+    literals:
+      - logging.level.root=WARN
+      - logging.level.com.orabank=INFO
+
+secretGenerator:
+  - name: orabank-db-credentials
+    behavior: merge
+    literals:
+      - host=postgres-staging.postgresql.svc.cluster.local
+      - database=orabank_sms_staging
+      - username=orabank_app_staging
+      - password=staging_password_change_me
+  
+  - name: orabank-webhook-secrets
+    behavior: merge
+    literals:
+      - hmac-secret=STAGING_HMAC_SECRET_CHANGE_ME_WITH_REAL_VALUE_64_CHARS_MIN
+      - otp-master-secret=STAGING_OTP_MASTER_SECRET_CHANGE_ME
+
+images:
+  - name: ghcr.io/orabank/sms-banking
+    newTag: staging-latest
