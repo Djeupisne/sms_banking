@@ -1,9 +1,9 @@
 spring:
   datasource:
-    # Version compatible avec les variables Render
-    url: jdbc:postgresql://${SPRING_DATASOURCE_URL:jdbc:postgresql://${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}}
-    username: ${SPRING_DATASOURCE_USERNAME:${POSTGRES_USER}}
-    password: ${SPRING_DATASOURCE_PASSWORD:${POSTGRES_PASSWORD}}
+    # Compatible avec les variables Render et celles de ton application
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB:orabank_sms}}
+    username: ${SPRING_DATASOURCE_USERNAME:${POSTGRES_USER:orabank_user}}
+    password: ${SPRING_DATASOURCE_PASSWORD:${POSTGRES_PASSWORD:secure_password}}
     driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: 20
@@ -13,8 +13,233 @@ spring:
       ddl-auto: validate
     show-sql: false
     open-in-view: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        jdbc:
+          lob:
+            non_contextual_creation: true
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
   redis:
     host: ${REDIS_HOST:localhost}
     port: ${REDIS_PORT:6379}
     password: ${REDIS_PASSWORD:}
-    ssl: false   # Désactive SSL si Redis est local
+    ssl: ${REDIS_SSL:false}
+    timeout: 5000ms
+    lettuce:
+      pool:
+        max-active: 8
+        max-idle: 8
+        min-idle: 0
+
+logging:
+  level:
+    com.orabank.smsbanking: ${LOG_LEVEL_COM_ORABANK:WARN}
+    org.springframework.security: ${LOG_LEVEL_SECURITY:WARN}
+    org.springframework.web: ${LOG_LEVEL_WEB:WARN}
+  file:
+    name: ${LOG_FILE_PATH:/var/log/orabank-sms-banking/app.log}
+  pattern:
+    console: "${LOG_PATTERN_CONSOLE:%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n}"
+
+server:
+  port: ${PORT:8080}
+  error:
+    include-message: ${SERVER_ERROR_INCLUDE_MESSAGE:never}
+    include-binding-errors: ${SERVER_ERROR_INCLUDE_BINDING_ERRORS:never}
+  tomcat:
+    connection-timeout: ${TOMCAT_CONNECTION_TIMEOUT:20000}
+    max-threads: ${TOMCAT_MAX_THREADS:200}
+
+# JWT Configuration
+jwt:
+  secret: ${JWT_SECRET:}
+  expiration-ms: ${JWT_EXPIRATION_MS:3600000}
+  reset-password:
+    secret: ${JWT_RESET_PASSWORD_SECRET:${JWT_SECRET}}
+    expiration-ms: ${JWT_RESET_PASSWORD_EXPIRATION:1800000}
+
+# =============================================================================
+# CONFIGURATION SMS GATEWAYS TOGO (MOOV & TOGOCEL) - PRODUCTION
+# =============================================================================
+moov:
+  sms:
+    enabled: ${MOOV_SMS_ENABLED:false}
+    api:
+      key: ${MOOV_SMS_API_KEY:}
+      secret: ${MOOV_SMS_API_SECRET:}
+      url: ${MOOV_SMS_API_URL:https://api.moov.tg/sms/v1/send}
+    sender:
+      id: ${MOOV_SMS_SENDER_ID:ORABANK}
+    connect:
+      timeout:
+        ms: ${MOOV_SMS_CONNECT_TIMEOUT_MS:5000}
+    read:
+      timeout:
+        ms: ${MOOV_SMS_READ_TIMEOUT_MS:10000}
+
+togocel:
+  sms:
+    enabled: ${TOGOCEL_SMS_ENABLED:false}
+    api:
+      key: ${TOGOCEL_SMS_API_KEY:}
+      secret: ${TOGOCEL_SMS_API_SECRET:}
+      url: ${TOGOCEL_SMS_API_URL:https://api.togocel.com/sms/v1/send}
+    sender:
+      id: ${TOGOCEL_SMS_SENDER_ID:ORABANK}
+    connect:
+      timeout:
+        ms: ${TOGOCEL_SMS_CONNECT_TIMEOUT_MS:5000}
+    read:
+      timeout:
+        ms: ${TOGOCEL_SMS_READ_TIMEOUT_MS:10000}
+
+sms:
+  gateway:
+    prefer:
+      moov: ${SMS_GATEWAY_PREFER_MOOV:true}
+
+# OTP Configuration
+otp:
+  length: ${OTP_LENGTH:6}
+  validity:
+    minutes: ${OTP_VALIDITY_MINUTES:5}
+  master:
+    secret: ${OTP_MASTER_SECRET:${ENCRYPTION_KEY}}
+  rate:
+    limit:
+      requests: ${OTP_RATE_LIMIT_REQUESTS:5}
+      window:
+        minutes: ${OTP_RATE_LIMIT_WINDOW_MINUTES:1}
+
+# Encryption Configuration
+encryption:
+  key: ${ENCRYPTION_KEY:}
+
+# Core Banking Configuration
+core:
+  banking:
+    base:
+      url: ${CORE_BANKING_BASE_URL:}
+    api:
+      key: ${CORE_BANKING_API_KEY:}
+      secret: ${CORE_BANKING_API_SECRET:}
+    mock:
+      enabled: ${CORE_BANKING_MOCK_ENABLED:true}
+    connect:
+      timeout:
+        ms: ${CORE_BANKING_CONNECT_TIMEOUT_MS:10000}
+    read:
+      timeout:
+        ms: ${CORE_BANKING_READ_TIMEOUT_MS:30000}
+
+# Webhook Configuration
+webhook:
+  auth:
+    method: ${WEBHOOK_AUTH_METHOD:jwt}
+  api:
+    key: ${WEBHOOK_API_KEY:}
+    enabled: ${WEBHOOK_API_ENABLED:false}
+  secret:
+    key: ${WEBHOOK_SECRET_KEY:}
+  signature:
+    enabled: ${WEBHOOK_SIGNATURE_ENABLED:true}
+    max-age-ms: ${WEBHOOK_SIGNATURE_MAX_AGE_MS:300000}
+
+# Admin/User Default Credentials
+admin:
+  username: ${ADMIN_USERNAME:admin}
+  password: ${ADMIN_PASSWORD:}
+
+user:
+  username: ${USER_USERNAME:user}
+  password: ${USER_PASSWORD:}
+
+# Rate Limiting
+rate:
+  limit:
+    requests: ${RATE_LIMIT_MAX_REQUESTS:5}
+    window:
+      minutes: ${RATE_LIMIT_WINDOW_MINUTES:1}
+    redis:
+      enabled: ${RATE_LIMIT_REDIS_ENABLED:false}
+
+# Mobile Money Configuration
+mobile-money:
+  max-amount: ${MOBILE_MONEY_MAX_AMOUNT:500000}
+  fees:
+    account-id: ${MOBILE_MONEY_FEES_ACCOUNT_ID:1}
+    percentage: ${MOBILE_MONEY_FEES_PERCENTAGE:1.0}
+    min-amount: ${MOBILE_MONEY_FEES_MIN:100}
+    max-amount: ${MOBILE_MONEY_FEES_MAX:5000}
+    enabled: ${MOBILE_MONEY_FEES_ENABLED:false}
+
+# Internal Transfer Fees
+internal-transfer:
+  fees:
+    enabled: ${INTERNAL_TRANSFER_FEES_ENABLED:false}
+    percentage: ${INTERNAL_TRANSFER_FEES_PERCENTAGE:0.5}
+    min-amount: ${INTERNAL_TRANSFER_FEES_MIN:50}
+    max-amount: ${INTERNAL_TRANSFER_FEES_MAX:2000}
+    account-number: ${INTERNAL_TRANSFER_FEES_ACCOUNT_NUMBER:FEE_INTERNAL_TRANSFER_001}
+
+# Brevo Email Configuration
+brevo:
+  api:
+    key: ${BREVO_API_KEY:}
+  sender:
+    email: ${BREVO_SENDER_EMAIL:noreply@orabank.tg}
+    name: ${BREVO_SENDER_NAME:Orabank SMS Banking}
+
+# Frontend URL (CORS)
+app:
+  frontend:
+    url: ${FRONTEND_URL:http://localhost:3001}
+
+# Management Endpoints
+management:
+  endpoints:
+    web:
+      exposure:
+        include: ${MANAGEMENT_ENDPOINTS_INCLUDE:health,info,metrics}
+      base-path: ${MANAGEMENT_ENDPOINTS_BASE_PATH:/actuator}
+  endpoint:
+    health:
+      show-details: ${MANAGEMENT_HEALTH_SHOW_DETAILS:when-authorized}
+      probes:
+        enabled: ${MANAGEMENT_HEALTH_PROBES_ENABLED:true}
+    info:
+      enabled: ${MANAGEMENT_INFO_ENABLED:true}
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    export:
+      prometheus:
+        enabled: ${METRICS_PROMETHEUS_ENABLED:false}
+  tracing:
+    enabled: ${TRACING_ENABLED:false}
+    sampling:
+      probability: ${TRACING_SAMPLING_PROBABILITY:0.0}
+
+# Resilience4j Configuration
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        registerHealthIndicator: true
+        slidingWindowSize: ${RESILIENCE4J_CIRCUITBREAKER_SLIDING_WINDOW_SIZE:10}
+        minimumNumberOfCalls: ${RESILIENCE4J_CIRCUITBREAKER_MINIMUM_CALLS:5}
+        permittedNumberOfCallsInHalfOpenState: ${RESILIENCE4J_CIRCUITBREAKER_PERMITTED_CALLS:3}
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        waitDurationInOpenState: ${RESILIENCE4J_CIRCUITBREAKER_WAIT_DURATION:30s}
+        failureRateThreshold: ${RESILIENCE4J_CIRCUITBREAKER_FAILURE_THRESHOLD:50}
+  retry:
+    configs:
+      default:
+        maxAttempts: ${RESILIENCE4J_RETRY_MAX_ATTEMPTS:3}
+        waitDuration: ${RESILIENCE4J_RETRY_WAIT_DURATION:1s}
+        enableExponentialBackoff: true
+        exponentialBackoffMultiplier: 2
