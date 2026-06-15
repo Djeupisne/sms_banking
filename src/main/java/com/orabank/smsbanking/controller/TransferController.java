@@ -8,6 +8,8 @@ import com.orabank.smsbanking.repository.AccountRepository;
 import com.orabank.smsbanking.repository.ClientRepository;
 import com.orabank.smsbanking.repository.TransactionRepository;
 import com.orabank.smsbanking.service.MobileMoneyService;
+import com.orabank.smsbanking.service.TransactionLoggingService;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -33,6 +35,8 @@ public class TransferController {
     private final ClientRepository clientRepository;
     private final AccountRepository accountRepository;
     private final TransactionRepository transactionRepository;
+    private final TransactionLoggingService loggingService;
+    private final HttpServletRequest httpServletRequest;
 
     private static final BigDecimal MAX_AMOUNT = new BigDecimal("500000");
     private static final BigDecimal FEE_PERCENTAGE = new BigDecimal("10");
@@ -48,17 +52,19 @@ public class TransferController {
                 request.getSourceAccountNumber(), request.getTargetAccountNumber(), request.getAmount());
 
         Map<String, Object> response = new HashMap<>();
+        Double amount = request.getAmount();
+        String transactionRef = UUID.randomUUID().toString();
 
         try {
-            BigDecimal amount = new BigDecimal(request.getAmount());
+            BigDecimal amountBd = new BigDecimal(request.getAmount());
 
-            if (amount.compareTo(MAX_AMOUNT) > 0) {
+            if (amountBd.compareTo(MAX_AMOUNT) > 0) {
                 response.put("success", false);
                 response.put("message", "Le montant maximum autorisé est de 500 000 FCFA");
                 return ResponseEntity.badRequest().body(response);
             }
 
-            if (amount.compareTo(BigDecimal.ZERO) <= 0) {
+            if (amountBd.compareTo(BigDecimal.ZERO) <= 0) {
                 response.put("success", false);
                 response.put("message", "Le montant doit être supérieur à 0");
                 return ResponseEntity.badRequest().body(response);
@@ -70,15 +76,15 @@ public class TransferController {
             Account targetAccount = accountRepository.findByAccountNumber(request.getTargetAccountNumber())
                     .orElseThrow(() -> new RuntimeException("Compte cible non trouvé: " + request.getTargetAccountNumber()));
 
-            if (sourceAccount.getBalance().compareTo(amount) < 0) {
+            if (sourceAccount.getBalance().compareTo(amountBd) < 0) {
                 response.put("success", false);
                 response.put("message", "Solde insuffisant");
                 return ResponseEntity.badRequest().body(response);
             }
 
             // Effectuer le virement
-            sourceAccount.setBalance(sourceAccount.getBalance().subtract(amount));
-            targetAccount.setBalance(targetAccount.getBalance().add(amount));
+            sourceAccount.setBalance(sourceAccount.getBalance().subtract(amountBd));
+            targetAccount.setBalance(targetAccount.getBalance().add(amountBd));
 
             accountRepository.save(sourceAccount);
             accountRepository.save(targetAccount);
@@ -86,7 +92,7 @@ public class TransferController {
             // Transaction de débit
             Transaction debitTransaction = new Transaction();
             debitTransaction.setAccountId(sourceAccount.getId());
-            debitTransaction.setAmount(amount);
+            debitTransaction.setAmount(amountBd);
             debitTransaction.setType("VIREMENT_INTERNE");
             debitTransaction.setStatus(TransactionStatus.COMPLETED);
             debitTransaction.setDescription(request.getDescription() != null ? request.getDescription() : "Virement interne vers " + request.getTargetAccountNumber());
@@ -97,13 +103,22 @@ public class TransferController {
             // Transaction de crédit
             Transaction creditTransaction = new Transaction();
             creditTransaction.setAccountId(targetAccount.getId());
-            creditTransaction.setAmount(amount);
+            creditTransaction.setAmount(amountBd);
             creditTransaction.setType("CREDIT");
             creditTransaction.setStatus(TransactionStatus.COMPLETED);
             creditTransaction.setDescription("Virement interne depuis " + request.getSourceAccountNumber());
             creditTransaction.setRelatedAccountId(sourceAccount.getId());
             creditTransaction.setCompletedAt(LocalDateTime.now());
             transactionRepository.save(creditTransaction);
+
+            // ✅ LOG DE SUCCÈS
+            loggingService.logTransaction(
+                    "INTERNAL_TRANSFER", "VIREMENT_INTERNE", amount,
+                    request.getSourceAccountNumber(), request.getTargetAccountNumber(),
+                    null, null,
+                    request.getDescription(), transactionRef,
+                    "SUCCESS", null, 0.0, amount, httpServletRequest
+            );
 
             response.put("success", true);
             response.put("message", "Virement interne effectué avec succès");
@@ -116,6 +131,14 @@ public class TransferController {
             return ResponseEntity.ok(response);
 
         } catch (Exception e) {
+            // ✅ LOG D'ÉCHEC
+            loggingService.logTransaction(
+                    "INTERNAL_TRANSFER", "VIREMENT_INTERNE", amount,
+                    request.getSourceAccountNumber(), request.getTargetAccountNumber(),
+                    null, null,
+                    request.getDescription(), transactionRef,
+                    "FAILED", e.getMessage(), 0.0, amount, httpServletRequest
+            );
             log.error("Erreur lors du virement interne", e);
             response.put("success", false);
             response.put("message", e.getMessage());
@@ -134,28 +157,28 @@ public class TransferController {
                 request.getSourcePhone(), request.getTargetAccountNumber(), request.getAmount());
 
         Map<String, Object> response = new HashMap<>();
+        Double amount = request.getAmount();
+        Double fees = Math.ceil(amount * 0.1);
+        Double totalAmount = amount + fees;
+        String transactionRef = UUID.randomUUID().toString();
 
         try {
-            BigDecimal amount = new BigDecimal(request.getAmount());
-            BigDecimal fees = amount.multiply(FEE_PERCENTAGE).divide(new BigDecimal("100"), 0, RoundingMode.CEILING);
-            BigDecimal totalAmount = amount.add(fees);
+            BigDecimal amountBd = new BigDecimal(request.getAmount());
+            BigDecimal feesBd = new BigDecimal(fees);
+            BigDecimal totalAmountBd = new BigDecimal(totalAmount);
 
-            // Générer une référence commune pour lier les transactions
-            String commonReference = UUID.randomUUID().toString();
-
-            if (amount.compareTo(MAX_AMOUNT) > 0) {
+            if (amountBd.compareTo(MAX_AMOUNT) > 0) {
                 response.put("success", false);
                 response.put("message", "Le montant maximum autorisé est de 500 000 FCFA");
                 return ResponseEntity.badRequest().body(response);
             }
 
-            if (amount.compareTo(BigDecimal.ZERO) <= 0) {
+            if (amountBd.compareTo(BigDecimal.ZERO) <= 0) {
                 response.put("success", false);
                 response.put("message", "Le montant doit être supérieur à 0");
                 return ResponseEntity.badRequest().body(response);
             }
 
-            // Vérifier le client source
             Client sourceClient = clientRepository.findByPhoneNumber(request.getSourcePhone())
                     .orElseThrow(() -> new RuntimeException("Client Orabank non trouvé avec ce numéro: " + request.getSourcePhone()));
 
@@ -165,24 +188,26 @@ public class TransferController {
             Account targetAccount = accountRepository.findByAccountNumber(request.getTargetAccountNumber())
                     .orElseThrow(() -> new RuntimeException("Compte cible non trouvé: " + request.getTargetAccountNumber()));
 
-            if (sourceAccount.getBalance().compareTo(totalAmount) < 0) {
+            if (sourceAccount.getBalance().compareTo(totalAmountBd) < 0) {
                 response.put("success", false);
                 response.put("message", "Solde insuffisant. Total requis: " + totalAmount + " FCFA (dont " + fees + " FCFA de frais)");
                 return ResponseEntity.badRequest().body(response);
             }
 
+            String commonReference = UUID.randomUUID().toString();
+
             // Débiter le compte source (montant + frais)
-            sourceAccount.setBalance(sourceAccount.getBalance().subtract(totalAmount));
+            sourceAccount.setBalance(sourceAccount.getBalance().subtract(totalAmountBd));
             accountRepository.save(sourceAccount);
 
             // Créditer le compte cible (montant uniquement)
-            targetAccount.setBalance(targetAccount.getBalance().add(amount));
+            targetAccount.setBalance(targetAccount.getBalance().add(amountBd));
             accountRepository.save(targetAccount);
 
-            // Transaction de débit (montant net uniquement)
+            // Transaction de débit
             Transaction debitTransaction = new Transaction();
             debitTransaction.setAccountId(sourceAccount.getId());
-            debitTransaction.setAmount(amount);  // ← Montant net (sans frais)
+            debitTransaction.setAmount(amountBd);
             debitTransaction.setType("VIREMENT_INTERNE");
             debitTransaction.setStatus(TransactionStatus.COMPLETED);
             debitTransaction.setReference(commonReference);
@@ -194,7 +219,7 @@ public class TransferController {
             // Transaction de crédit
             Transaction creditTransaction = new Transaction();
             creditTransaction.setAccountId(targetAccount.getId());
-            creditTransaction.setAmount(amount);
+            creditTransaction.setAmount(amountBd);
             creditTransaction.setType("CREDIT");
             creditTransaction.setStatus(TransactionStatus.COMPLETED);
             creditTransaction.setReference(commonReference);
@@ -203,16 +228,16 @@ public class TransferController {
             creditTransaction.setCompletedAt(LocalDateTime.now());
             transactionRepository.save(creditTransaction);
 
-            // Transaction de frais avec la même référence
-            if (fees.compareTo(BigDecimal.ZERO) > 0) {
+            // Transaction de frais
+            if (feesBd.compareTo(BigDecimal.ZERO) > 0) {
                 Account feesAccount = accountRepository.findByAccountNumber("FEE_MOBILE_MONEY_001").orElse(null);
                 if (feesAccount != null) {
-                    feesAccount.setBalance(feesAccount.getBalance().add(fees));
+                    feesAccount.setBalance(feesAccount.getBalance().add(feesBd));
                     accountRepository.save(feesAccount);
 
                     Transaction feesTransaction = new Transaction();
                     feesTransaction.setAccountId(feesAccount.getId());
-                    feesTransaction.setAmount(fees);
+                    feesTransaction.setAmount(feesBd);
                     feesTransaction.setType("CREDIT_FEES");
                     feesTransaction.setStatus(TransactionStatus.COMPLETED);
                     feesTransaction.setReference(commonReference);
@@ -221,6 +246,15 @@ public class TransferController {
                     transactionRepository.save(feesTransaction);
                 }
             }
+
+            // ✅ LOG DE SUCCÈS
+            loggingService.logTransaction(
+                    "INTERNAL_TRANSFER_FROM_PHONE", "VIREMENT_INTERNE", amount,
+                    null, request.getTargetAccountNumber(),
+                    request.getSourcePhone(), null,
+                    request.getDescription(), transactionRef,
+                    "SUCCESS", null, fees, totalAmount, httpServletRequest
+            );
 
             response.put("success", true);
             response.put("message", "Virement interne effectué avec succès");
@@ -233,6 +267,14 @@ public class TransferController {
             return ResponseEntity.ok(response);
 
         } catch (Exception e) {
+            // ✅ LOG D'ÉCHEC
+            loggingService.logTransaction(
+                    "INTERNAL_TRANSFER_FROM_PHONE", "VIREMENT_INTERNE", amount,
+                    null, request.getTargetAccountNumber(),
+                    request.getSourcePhone(), null,
+                    request.getDescription(), transactionRef,
+                    "FAILED", e.getMessage(), fees, totalAmount, httpServletRequest
+            );
             log.error("Erreur lors du virement interne depuis téléphone", e);
             response.put("success", false);
             response.put("message", e.getMessage());
@@ -251,15 +293,17 @@ public class TransferController {
                 request.getAccountNumber(), request.getAmount(), request.getRecipientPhone());
 
         Map<String, Object> response = new HashMap<>();
+        Double amount = request.getAmount();
+        Double fees = Math.ceil(amount * 0.1);
+        Double totalAmount = amount + fees;
+        String transactionRef = UUID.randomUUID().toString();
 
         try {
-            BigDecimal amount = new BigDecimal(request.getAmount());
-            BigDecimal fees = amount.multiply(FEE_PERCENTAGE).divide(new BigDecimal("100"), 0, RoundingMode.CEILING);
-            BigDecimal totalAmount = amount.add(fees);
+            BigDecimal amountBd = new BigDecimal(request.getAmount());
+            BigDecimal feesBd = new BigDecimal(fees);
+            BigDecimal totalAmountBd = new BigDecimal(totalAmount);
 
-            String commonReference = UUID.randomUUID().toString();
-
-            if (amount.compareTo(MAX_AMOUNT) > 0) {
+            if (amountBd.compareTo(MAX_AMOUNT) > 0) {
                 response.put("success", false);
                 response.put("message", "Le montant maximum autorisé est de 500 000 FCFA");
                 return ResponseEntity.badRequest().body(response);
@@ -268,7 +312,7 @@ public class TransferController {
             Account sourceAccount = accountRepository.findByAccountNumber(request.getAccountNumber())
                     .orElseThrow(() -> new RuntimeException("Compte source non trouvé: " + request.getAccountNumber()));
 
-            if (sourceAccount.getBalance().compareTo(totalAmount) < 0) {
+            if (sourceAccount.getBalance().compareTo(totalAmountBd) < 0) {
                 response.put("success", false);
                 response.put("message", "Solde insuffisant. Total requis: " + totalAmount + " FCFA (dont " + fees + " FCFA de frais)");
                 return ResponseEntity.badRequest().body(response);
@@ -277,15 +321,17 @@ public class TransferController {
             Client sourceClient = clientRepository.findById(sourceAccount.getClientId())
                     .orElseThrow(() -> new RuntimeException("Client source non trouvé"));
 
-            boolean success = mobileMoneyService.transferToMobileMoney(sourceClient.getPhoneNumber(), amount);
+            boolean success = mobileMoneyService.transferToMobileMoney(sourceClient.getPhoneNumber(), amountBd);
 
             if (success) {
-                sourceAccount.setBalance(sourceAccount.getBalance().subtract(totalAmount));
+                sourceAccount.setBalance(sourceAccount.getBalance().subtract(totalAmountBd));
                 accountRepository.save(sourceAccount);
+
+                String commonReference = UUID.randomUUID().toString();
 
                 Transaction debitTransaction = new Transaction();
                 debitTransaction.setAccountId(sourceAccount.getId());
-                debitTransaction.setAmount(amount);  // Montant net
+                debitTransaction.setAmount(amountBd);
                 debitTransaction.setType("DEBIT_MOBILE_MONEY");
                 debitTransaction.setStatus(TransactionStatus.COMPLETED);
                 debitTransaction.setReference(commonReference);
@@ -294,13 +340,13 @@ public class TransferController {
                 transactionRepository.save(debitTransaction);
 
                 Account feesAccount = accountRepository.findByAccountNumber("FEE_MOBILE_MONEY_001").orElse(null);
-                if (feesAccount != null && fees.compareTo(BigDecimal.ZERO) > 0) {
-                    feesAccount.setBalance(feesAccount.getBalance().add(fees));
+                if (feesAccount != null && feesBd.compareTo(BigDecimal.ZERO) > 0) {
+                    feesAccount.setBalance(feesAccount.getBalance().add(feesBd));
                     accountRepository.save(feesAccount);
 
                     Transaction feesTransaction = new Transaction();
                     feesTransaction.setAccountId(feesAccount.getId());
-                    feesTransaction.setAmount(fees);
+                    feesTransaction.setAmount(feesBd);
                     feesTransaction.setType("CREDIT_FEES");
                     feesTransaction.setStatus(TransactionStatus.COMPLETED);
                     feesTransaction.setReference(commonReference);
@@ -309,6 +355,15 @@ public class TransferController {
                     transactionRepository.save(feesTransaction);
                 }
 
+                // ✅ LOG DE SUCCÈS
+                loggingService.logTransaction(
+                        "MOBILE_MONEY_FROM_ACCOUNT", "DEBIT_MOBILE_MONEY", amount,
+                        request.getAccountNumber(), null,
+                        null, request.getRecipientPhone(),
+                        request.getDescription(), transactionRef,
+                        "SUCCESS", null, fees, totalAmount, httpServletRequest
+                );
+
                 response.put("success", true);
                 response.put("message", "Transfert Mobile Money effectué avec succès");
                 response.put("amount", request.getAmount());
@@ -316,6 +371,14 @@ public class TransferController {
                 response.put("total", totalAmount.intValue());
                 response.put("recipientPhone", request.getRecipientPhone());
             } else {
+                // ✅ LOG D'ÉCHEC
+                loggingService.logTransaction(
+                        "MOBILE_MONEY_FROM_ACCOUNT", "DEBIT_MOBILE_MONEY", amount,
+                        request.getAccountNumber(), null,
+                        null, request.getRecipientPhone(),
+                        request.getDescription(), transactionRef,
+                        "FAILED", "Échec du transfert Mobile Money", fees, totalAmount, httpServletRequest
+                );
                 response.put("success", false);
                 response.put("message", "Échec du transfert Mobile Money");
                 return ResponseEntity.badRequest().body(response);
@@ -324,6 +387,14 @@ public class TransferController {
             return ResponseEntity.ok(response);
 
         } catch (Exception e) {
+            // ✅ LOG D'ÉCHEC
+            loggingService.logTransaction(
+                    "MOBILE_MONEY_FROM_ACCOUNT", "DEBIT_MOBILE_MONEY", amount,
+                    request.getAccountNumber(), null,
+                    null, request.getRecipientPhone(),
+                    request.getDescription(), transactionRef,
+                    "FAILED", e.getMessage(), fees, totalAmount, httpServletRequest
+            );
             log.error("Erreur lors du transfert Mobile Money", e);
             response.put("success", false);
             response.put("message", e.getMessage());
@@ -342,15 +413,17 @@ public class TransferController {
                 request.getSourcePhone(), request.getAmount(), request.getRecipientPhone());
 
         Map<String, Object> response = new HashMap<>();
+        Double amount = request.getAmount();
+        Double fees = Math.ceil(amount * 0.1);
+        Double totalAmount = amount + fees;
+        String transactionRef = UUID.randomUUID().toString();
 
         try {
-            BigDecimal amount = new BigDecimal(request.getAmount());
-            BigDecimal fees = amount.multiply(FEE_PERCENTAGE).divide(new BigDecimal("100"), 0, RoundingMode.CEILING);
-            BigDecimal totalAmount = amount.add(fees);
+            BigDecimal amountBd = new BigDecimal(request.getAmount());
+            BigDecimal feesBd = new BigDecimal(fees);
+            BigDecimal totalAmountBd = new BigDecimal(totalAmount);
 
-            String commonReference = UUID.randomUUID().toString();
-
-            if (amount.compareTo(MAX_AMOUNT) > 0) {
+            if (amountBd.compareTo(MAX_AMOUNT) > 0) {
                 response.put("success", false);
                 response.put("message", "Le montant maximum autorisé est de 500 000 FCFA");
                 return ResponseEntity.badRequest().body(response);
@@ -362,21 +435,23 @@ public class TransferController {
             Account sourceAccount = accountRepository.findByClientId(sourceClient.getId())
                     .orElseThrow(() -> new RuntimeException("Compte non trouvé pour ce client"));
 
-            if (sourceAccount.getBalance().compareTo(totalAmount) < 0) {
+            if (sourceAccount.getBalance().compareTo(totalAmountBd) < 0) {
                 response.put("success", false);
                 response.put("message", "Solde insuffisant. Total requis: " + totalAmount + " FCFA (dont " + fees + " FCFA de frais)");
                 return ResponseEntity.badRequest().body(response);
             }
 
-            boolean success = mobileMoneyService.transferToMobileMoney(sourceClient.getPhoneNumber(), amount);
+            boolean success = mobileMoneyService.transferToMobileMoney(sourceClient.getPhoneNumber(), amountBd);
 
             if (success) {
-                sourceAccount.setBalance(sourceAccount.getBalance().subtract(totalAmount));
+                sourceAccount.setBalance(sourceAccount.getBalance().subtract(totalAmountBd));
                 accountRepository.save(sourceAccount);
+
+                String commonReference = UUID.randomUUID().toString();
 
                 Transaction debitTransaction = new Transaction();
                 debitTransaction.setAccountId(sourceAccount.getId());
-                debitTransaction.setAmount(amount);  // Montant net
+                debitTransaction.setAmount(amountBd);
                 debitTransaction.setType("DEBIT_MOBILE_MONEY");
                 debitTransaction.setStatus(TransactionStatus.COMPLETED);
                 debitTransaction.setReference(commonReference);
@@ -385,13 +460,13 @@ public class TransferController {
                 transactionRepository.save(debitTransaction);
 
                 Account feesAccount = accountRepository.findByAccountNumber("FEE_MOBILE_MONEY_001").orElse(null);
-                if (feesAccount != null && fees.compareTo(BigDecimal.ZERO) > 0) {
-                    feesAccount.setBalance(feesAccount.getBalance().add(fees));
+                if (feesAccount != null && feesBd.compareTo(BigDecimal.ZERO) > 0) {
+                    feesAccount.setBalance(feesAccount.getBalance().add(feesBd));
                     accountRepository.save(feesAccount);
 
                     Transaction feesTransaction = new Transaction();
                     feesTransaction.setAccountId(feesAccount.getId());
-                    feesTransaction.setAmount(fees);
+                    feesTransaction.setAmount(feesBd);
                     feesTransaction.setType("CREDIT_FEES");
                     feesTransaction.setStatus(TransactionStatus.COMPLETED);
                     feesTransaction.setReference(commonReference);
@@ -399,6 +474,15 @@ public class TransferController {
                     feesTransaction.setCompletedAt(LocalDateTime.now());
                     transactionRepository.save(feesTransaction);
                 }
+
+                // ✅ LOG DE SUCCÈS
+                loggingService.logTransaction(
+                        "MOBILE_MONEY_FROM_PHONE", "DEBIT_MOBILE_MONEY", amount,
+                        null, null,
+                        request.getSourcePhone(), request.getRecipientPhone(),
+                        request.getDescription(), transactionRef,
+                        "SUCCESS", null, fees, totalAmount, httpServletRequest
+                );
 
                 response.put("success", true);
                 response.put("message", "Transfert Mobile Money effectué avec succès");
@@ -408,6 +492,14 @@ public class TransferController {
                 response.put("sourcePhone", request.getSourcePhone());
                 response.put("recipientPhone", request.getRecipientPhone());
             } else {
+                // ✅ LOG D'ÉCHEC
+                loggingService.logTransaction(
+                        "MOBILE_MONEY_FROM_PHONE", "DEBIT_MOBILE_MONEY", amount,
+                        null, null,
+                        request.getSourcePhone(), request.getRecipientPhone(),
+                        request.getDescription(), transactionRef,
+                        "FAILED", "Échec du transfert Mobile Money", fees, totalAmount, httpServletRequest
+                );
                 response.put("success", false);
                 response.put("message", "Échec du transfert Mobile Money");
                 return ResponseEntity.badRequest().body(response);
@@ -416,6 +508,14 @@ public class TransferController {
             return ResponseEntity.ok(response);
 
         } catch (Exception e) {
+            // ✅ LOG D'ÉCHEC
+            loggingService.logTransaction(
+                    "MOBILE_MONEY_FROM_PHONE", "DEBIT_MOBILE_MONEY", amount,
+                    null, null,
+                    request.getSourcePhone(), request.getRecipientPhone(),
+                    request.getDescription(), transactionRef,
+                    "FAILED", e.getMessage(), fees, totalAmount, httpServletRequest
+            );
             log.error("Erreur lors du transfert Mobile Money", e);
             response.put("success", false);
             response.put("message", e.getMessage());
