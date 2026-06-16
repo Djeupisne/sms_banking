@@ -62,7 +62,7 @@ public class SecurityConfig {
     public SecurityFilterChain filterChain(HttpSecurity http, HandlerMappingIntrospector introspector) throws Exception {
         MvcRequestMatcher.Builder mvcMatcherBuilder = new MvcRequestMatcher.Builder(introspector);
 
-        // ✅ Configuration de l'entry point personnalisé
+        // Configuration de l'entry point personnalisé
         BasicAuthenticationEntryPoint authenticationEntryPoint = new BasicAuthenticationEntryPoint() {
             @Override
             public void commence(HttpServletRequest request, HttpServletResponse response,
@@ -141,7 +141,7 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
 
-        // ✅ Correction : Utilise la variable d'environnement pour l'origine autorisée
+        //  Correction : Utilise la variable d'environnement pour l'origine autorisée
         log.info("Configuration CORS pour l'origine: {}", frontendUrl);
         configuration.setAllowedOrigins(List.of(frontendUrl));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
