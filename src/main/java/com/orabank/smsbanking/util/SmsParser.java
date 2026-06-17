@@ -13,13 +13,28 @@ import java.util.regex.Pattern;
 @Slf4j
 @Component
 public class SmsParser {
-    
-    private static final Pattern BALANCE_PATTERN = Pattern.compile("^SOLDE\\??$", Pattern.CASE_INSENSITIVE);
+
+    // ============================================================
+    // PATTERNS MODIFIÉS POUR SUPPORTER SOLDE? AVEC OU SANS COMPTE
+    // ============================================================
+
+    // Accepte: SOLDE, SOLDE?, SOLDE COMPTEXXX, SOLDE? COMPTEXXX
+    private static final Pattern BALANCE_PATTERN = Pattern.compile(
+            "^SOLDE\\??(?:\\s+\\w+)?$",
+            Pattern.CASE_INSENSITIVE
+    );
+
     private static final Pattern HISTORY_PATTERN = Pattern.compile("^HISTO(?:RIQUE)?$", Pattern.CASE_INSENSITIVE);
     private static final Pattern OTP_PATTERN = Pattern.compile("^OTP$", Pattern.CASE_INSENSITIVE);
-    private static final Pattern TRANSFER_PATTERN = Pattern.compile("^TRANSFER\\s+\\d+(?:\\s+\\+?\\d+)?(?:\\s+MOBILE)?$", Pattern.CASE_INSENSITIVE);
+
+    // Accepte: TRANSFER 50000, TRANSFER 50000 +228XXXX, TRANSFER 50000 COMPTEXXX +228XXXX
+    private static final Pattern TRANSFER_PATTERN = Pattern.compile(
+            "^TRANSFER\\s+\\d+(?:\\s+\\w+)?(?:\\s+\\+?\\d+)?(?:\\s+MOBILE)?$",
+            Pattern.CASE_INSENSITIVE
+    );
+
     private static final Pattern HELP_PATTERN = Pattern.compile("^HELP$", Pattern.CASE_INSENSITIVE);
-    
+
     /**
      * Parses the command type from the SMS message.
      *
@@ -31,9 +46,10 @@ public class SmsParser {
             log.debug("Empty message received, returning UNKNOWN command type");
             return CommandType.UNKNOWN;
         }
-        
+
         String trimmedMessage = message.trim();
-        
+
+        // Vérifier d'abord les commandes spécifiques
         if (BALANCE_PATTERN.matcher(trimmedMessage).matches()) {
             log.debug("Identified SOLDE command");
             return CommandType.SOLDE;
@@ -54,7 +70,7 @@ public class SmsParser {
             return CommandType.UNKNOWN;
         }
     }
-    
+
     /**
      * Extracts the amount from a transfer command.
      *
@@ -65,22 +81,26 @@ public class SmsParser {
         if (message == null) {
             return null;
         }
-        
-        java.util.regex.Matcher matcher = TRANSFER_PATTERN.matcher(message.trim());
-        if (matcher.matches()) {
-            try {
-                String[] parts = message.trim().split("\\s+");
-                if (parts.length >= 2) {
-                    return Long.parseLong(parts[1]);
+
+        try {
+            String[] parts = message.trim().split("\\s+");
+            // TRANSFER 50000 -> parts[1] = 50000
+            // TRANSFER 50000 COMPTE002 +228... -> parts[1] = 50000
+            // TRANSFER 50000 +228... -> parts[1] = 50000
+            if (parts.length >= 2) {
+                // Vérifier que le deuxième élément est un nombre
+                String amountStr = parts[1];
+                if (amountStr.matches("\\d+")) {
+                    return Long.parseLong(amountStr);
                 }
-            } catch (NumberFormatException e) {
-                log.warn("Could not parse transfer amount from message: {}", message);
             }
+        } catch (NumberFormatException e) {
+            log.warn("Could not parse transfer amount from message: {}", message);
         }
-        
+
         return null;
     }
-    
+
     /**
      * Extracts the recipient phone number from a transfer command.
      *
@@ -91,21 +111,47 @@ public class SmsParser {
         if (message == null) {
             return null;
         }
-        
-        java.util.regex.Matcher matcher = TRANSFER_PATTERN.matcher(message.trim());
-        if (matcher.matches()) {
-            String[] parts = message.trim().split("\\s+");
-            // TRANSFER 50000 -> no recipient (parts.length = 2)
-            // TRANSFER 50000 +2250123456789 -> recipient (parts.length = 3)
-            // TRANSFER 50000 +2250123456789 MOBILE -> recipient (parts.length = 4)
-            if (parts.length >= 3 && !parts[2].equalsIgnoreCase("MOBILE")) {
-                return parts[2];
+
+        String[] parts = message.trim().split("\\s+");
+
+        // TRANSFER 50000 +22801234567 (parts.length = 3)
+        // TRANSFER 50000 COMPTE002 +22801234567 (parts.length = 4)
+        // TRANSFER 50000 +22801234567 MOBILE (parts.length = 4)
+        // TRANSFER 50000 COMPTE002 +22801234567 MOBILE (parts.length = 5)
+
+        for (String part : parts) {
+            // Vérifier si la partie ressemble à un numéro de téléphone
+            if (part.matches("^\\+?\\d{8,15}$")) {
+                return part;
             }
         }
-        
+
         return null;
     }
-    
+
+    /**
+     * Extracts the account number from a command.
+     *
+     * @param message the command message
+     * @return the extracted account number, or null if not found
+     */
+    public String extractAccountNumber(String message) {
+        if (message == null) {
+            return null;
+        }
+
+        String[] parts = message.trim().split("\\s+");
+
+        for (String part : parts) {
+            // Vérifier si la partie ressemble à un numéro de compte (COMPTEXXX)
+            if (part.matches("^COMPTE\\d+$")) {
+                return part;
+            }
+        }
+
+        return null;
+    }
+
     /**
      * Checks if a transfer command specifies MOBILE transfer type.
      *
@@ -116,7 +162,7 @@ public class SmsParser {
         if (message == null) {
             return false;
         }
-        
+
         return message.trim().toUpperCase().contains("MOBILE");
     }
 }

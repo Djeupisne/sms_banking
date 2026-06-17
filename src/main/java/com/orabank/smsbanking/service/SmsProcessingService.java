@@ -48,7 +48,11 @@ public class SmsProcessingService {
         String from = request.getFrom();
         String body = request.getBody();
 
+        // ============================================================
+        // GÉNÉRER UNE SEULE RÉFÉRENCE POUR TOUTE LA CONVERSATION
+        // ============================================================
         String conversationReference = generateReference();
+        log.info("Référence de conversation: {}", conversationReference);
 
         String normalizedFrom = SmsUtils.normalizePhoneNumber(from);
         if (normalizedFrom == null) {
@@ -65,7 +69,7 @@ public class SmsProcessingService {
         try {
             incomingLog = smsLogMapper.toEntity(request);
             incomingLog.setDirection(SmsDirection.INCOMING);
-            incomingLog.setReference(conversationReference);
+            incomingLog.setReference(conversationReference);  // ← MÊME RÉFÉRENCE
             smsLogRepository.save(incomingLog);
             log.info("SMS recu - Ref: {}, From: {}", conversationReference, LoggingUtil.maskPhoneNumber(normalizedFrom));
         } catch (Exception e) {
@@ -88,24 +92,20 @@ public class SmsProcessingService {
         }
 
         // ============================================================
-        // SAUVEGARDE DU SMS SORTANT AVEC UNE NOUVELLE RÉFÉRENCE UNIQUE
+        // SAUVEGARDE DU SMS SORTANT AVEC LA MÊME RÉFÉRENCE
         // ============================================================
-
         try {
-            // Générer une nouvelle référence pour le SMS sortant pour éviter les doublons
-            String outgoingReference = generateReference();
-
             SmsLog outgoingLog = new SmsLog();
             outgoingLog.setSender(request.getTo());
             outgoingLog.setTo(normalizedFrom);
             outgoingLog.setBody(responseMessage);
             outgoingLog.setDirection(SmsDirection.OUTGOING);
-            outgoingLog.setReference(outgoingReference);  // ← UTILISER UNE NOUVELLE RÉFÉRENCE
+            outgoingLog.setReference(conversationReference);  // ← MÊME RÉFÉRENCE
             if (incomingLog != null) {
                 outgoingLog.setRelatedSmsId(incomingLog.getId());
             }
             smsLogRepository.save(outgoingLog);
-            log.info("SMS sortant sauvegarde - Ref: {}, To: {}", outgoingReference, LoggingUtil.maskPhoneNumber(normalizedFrom));
+            log.info("SMS sortant sauvegarde - Ref: {}, To: {}", conversationReference, LoggingUtil.maskPhoneNumber(normalizedFrom));
         } catch (Exception e) {
             log.error("Erreur sauvegarde SMS sortant", e);
         }
@@ -113,7 +113,7 @@ public class SmsProcessingService {
         SmsResponseDto response = new SmsResponseDto();
         response.setTo(normalizedFrom);
         response.setMessage(responseMessage);
-        response.setReference(conversationReference);
+        response.setReference(conversationReference);  // ← MÊME RÉFÉRENCE
         response.setStatus("SENT");
 
         try {
