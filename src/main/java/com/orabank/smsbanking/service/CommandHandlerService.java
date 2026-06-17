@@ -1,11 +1,9 @@
 package com.orabank.smsbanking.service;
 
 import com.orabank.smsbanking.entity.Account;
-import com.orabank.smsbanking.entity.Client;
 import com.orabank.smsbanking.entity.Transaction;
 import com.orabank.smsbanking.exception.ClientNotFoundException;
 import com.orabank.smsbanking.exception.InsufficientBalanceException;
-import com.orabank.smsbanking.security.OtpGenerator;
 import com.orabank.smsbanking.security.PhoneVerificationService;
 import com.orabank.smsbanking.util.DateFormatter;
 import com.orabank.smsbanking.util.LoggingUtil;
@@ -29,10 +27,9 @@ import java.util.stream.Collectors;
 public class CommandHandlerService {
 
     private final AccountService accountService;
-    private final OtpGenerator otpGenerator;
+    private final PhoneVerificationService phoneVerificationService;
     private final MobileMoneyService mobileMoneyService;
     private final SmsParser smsParser;
-    private final PhoneVerificationService phoneVerificationService;
 
     @Value("${app.sms.prefix:ORABANK}")
     private String smsPrefix;
@@ -51,12 +48,6 @@ public class CommandHandlerService {
     // MÉTHODES UTILITAIRES
     // ============================================================
 
-    /**
-     * Normalise le numéro de téléphone au format E.164 (+228XXXXXXXXX).
-     *
-     * @param phoneNumber le numéro brut
-     * @return le numéro normalisé ou null si invalide
-     */
     private String normalizePhoneNumber(String phoneNumber) {
         return SmsUtils.normalizePhoneNumber(phoneNumber);
     }
@@ -89,13 +80,13 @@ public class CommandHandlerService {
                 return String.format("%s - Numéro de téléphone invalide.", smsPrefix);
             }
 
-            // Parser la commande pour extraire le numéro de compte
             Matcher matcher = BALANCE_PATTERN.matcher(rawMessage.trim());
             String accountNumber = null;
             if (matcher.matches()) {
                 accountNumber = matcher.group(1);
             }
 
+            // Récupération des comptes
             List<Account> accounts = accountService.getAccountsByPhone(normalizedPhone);
 
             if (accounts.isEmpty()) {
@@ -104,8 +95,11 @@ public class CommandHandlerService {
 
             // Si un numéro de compte est spécifié
             if (accountNumber != null && !accountNumber.isEmpty()) {
+                // Créer une copie final du numéro pour l'utiliser dans la lambda
+                final String finalAccountNumber = accountNumber;
+
                 Optional<Account> optionalAccount = accounts.stream()
-                        .filter(a -> a.getAccountNumber().equalsIgnoreCase(accountNumber))
+                        .filter(a -> a.getAccountNumber().equalsIgnoreCase(finalAccountNumber))
                         .findFirst();
 
                 if (optionalAccount.isEmpty()) {
@@ -161,7 +155,6 @@ public class CommandHandlerService {
                 return String.format("%s - Numéro de téléphone invalide.", smsPrefix);
             }
 
-            // Parser la commande pour extraire le numéro de compte
             Matcher matcher = HISTORY_PATTERN.matcher(rawMessage.trim());
             String accountNumber = null;
             if (matcher.matches()) {
@@ -177,8 +170,10 @@ public class CommandHandlerService {
             // Sélectionner le compte
             Account selectedAccount;
             if (accountNumber != null && !accountNumber.isEmpty()) {
+                final String finalAccountNumber = accountNumber;
+
                 selectedAccount = accounts.stream()
-                        .filter(a -> a.getAccountNumber().equalsIgnoreCase(accountNumber))
+                        .filter(a -> a.getAccountNumber().equalsIgnoreCase(finalAccountNumber))
                         .findFirst()
                         .orElse(null);
 
@@ -268,13 +263,11 @@ public class CommandHandlerService {
                 return String.format("%s - Numéro de téléphone invalide.", smsPrefix);
             }
 
-            // Vérifier si le message est vide ou ne contient que TRANSFER
             String trimmedMessage = rawMessage.trim();
             if (trimmedMessage.equalsIgnoreCase("TRANSFER")) {
                 return String.format("%s - Format invalide. Exemple: TRANSFERT 1000 COMPTEXXX +22893360150", smsPrefix);
             }
 
-            // Parser la commande TRANSFERT avec pattern
             Matcher transferMatcher = TRANSFER_PATTERN.matcher(trimmedMessage);
             String accountNumber = null;
             boolean isMobileMoney = false;
@@ -284,7 +277,6 @@ public class CommandHandlerService {
                 isMobileMoney = "MOBILE".equalsIgnoreCase(transferMatcher.group(3));
             }
 
-            // Extraire le montant
             Long amountLong = smsParser.extractTransferAmount(rawMessage);
             if (amountLong == null || amountLong == 0) {
                 return String.format("%s - Montant invalide. Exemple: TRANSFERT 1000 COMPTEXXX +22893360150", smsPrefix);
@@ -296,7 +288,6 @@ public class CommandHandlerService {
 
             BigDecimal amount = BigDecimal.valueOf(amountLong);
 
-            // Extraire le numéro du destinataire
             String recipientPhoneRaw = smsParser.extractRecipientPhone(rawMessage);
             if (recipientPhoneRaw == null) {
                 return String.format("%s - Numéro du destinataire manquant. Exemple: TRANSFERT 1000 COMPTEXXX +22893360150", smsPrefix);
@@ -307,12 +298,10 @@ public class CommandHandlerService {
                 return String.format("%s - Numéro du destinataire invalide. Format attendu: +228XXXXXXXX", smsPrefix);
             }
 
-            // Empêcher les transferts vers soi-même
             if (normalizedPhone.equals(recipientPhone)) {
                 return String.format("%s - Impossible de virer de l'argent vers votre propre compte.", smsPrefix);
             }
 
-            // Récupérer les comptes du client
             List<Account> accounts = accountService.getAccountsByPhone(normalizedPhone);
             if (accounts.isEmpty()) {
                 return String.format("%s - Aucun compte trouvé pour ce client.", smsPrefix);
@@ -321,8 +310,10 @@ public class CommandHandlerService {
             // Sélectionner le compte source
             Account sourceAccount;
             if (accountNumber != null && !accountNumber.isEmpty()) {
+                final String finalAccountNumber = accountNumber;
+
                 sourceAccount = accounts.stream()
-                        .filter(a -> a.getAccountNumber().equalsIgnoreCase(accountNumber))
+                        .filter(a -> a.getAccountNumber().equalsIgnoreCase(finalAccountNumber))
                         .findFirst()
                         .orElse(null);
 
@@ -344,7 +335,6 @@ public class CommandHandlerService {
                 sourceAccount = accounts.get(0);
             }
 
-            // Vérifier le solde AVANT toute opération
             if (sourceAccount.getBalance().compareTo(amount) < 0) {
                 log.warn("Solde insuffisant - Compte: {}, Solde: {}, Montant requis: {}",
                         sourceAccount.getAccountNumber(), sourceAccount.getBalance(), amount);
@@ -353,7 +343,6 @@ public class CommandHandlerService {
             }
 
             if (isMobileMoney) {
-                // Vérification supplémentaire pour Mobile Money
                 if (amount.compareTo(BigDecimal.valueOf(1000000)) > 0) {
                     return String.format("%s - Montant maximum pour Mobile Money: 1 000 000 FCFA", smsPrefix);
                 }
@@ -374,7 +363,6 @@ public class CommandHandlerService {
                             smsPrefix, sourceAccount.getAccountNumber());
                 }
             } else {
-                // Virement interne - Utiliser la nouvelle méthode avec compte source
                 accountService.transferFromAccount(sourceAccount, recipientPhone, amount, "Virement interne SMS");
 
                 log.info("Virement interne réussi - Émetteur: {}, Compte: {}, Bénéficiaire: {}, Montant: {} FCFA",
@@ -411,10 +399,6 @@ public class CommandHandlerService {
     // COMMANDE: HELP
     // ============================================================
 
-    /**
-     * Affiche l'aide avec les commandes disponibles.
-     * Utilise des retours à la ligne pour un affichage clair.
-     */
     private String handleHelp() {
         return smsPrefix + " - Commandes disponibles:\n" +
                 "SOLDE? - Consulter solde\n" +
