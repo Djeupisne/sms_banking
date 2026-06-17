@@ -8,6 +8,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 
 @Entity
 @Table(name = "sms_logs")
@@ -24,7 +25,7 @@ public class SmsLog {
     @Column(nullable = false, name = "sender")
     private String sender;
 
-    @Column(name = "\"to\"", nullable = false)  // ← Échappement du mot clé SQL
+    @Column(name = "\"to\"", nullable = false)
     private String to;
 
     @Column(nullable = false, length = 1600)
@@ -50,6 +51,14 @@ public class SmsLog {
     @Builder.Default
     private LocalDateTime createdAt = LocalDateTime.now();
 
+    //  NOUVEAU : Référence unique
+    @Column(name = "reference", unique = true)
+    private String reference;
+
+    //  NOUVEAU : ID de conversation (pour lier les messages)
+    @Column(name = "conversation_id")
+    private String conversationId;
+
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();
@@ -59,5 +68,31 @@ public class SmsLog {
         if (processedSuccessfully == null) {
             processedSuccessfully = true;
         }
+        //  Générer la référence si elle n'existe pas
+        if (reference == null || reference.isEmpty()) {
+            reference = generateReference();
+        }
+        //  Générer l'ID de conversation si elle n'existe pas
+        if (conversationId == null || conversationId.isEmpty()) {
+            conversationId = generateConversationId();
+        }
+    }
+
+    /**
+     * Génère une référence unique pour le SMS
+     * Format: SMS_20260617_142530_1234
+     */
+    private String generateReference() {
+        String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
+        String random = String.format("%04d", (int)(Math.random() * 10000));
+        return "SMS_" + timestamp + "_" + random;
+    }
+
+    /**
+     * Génère un ID de conversation basé sur le timestamp
+     * Format: CONV_20260617_142530
+     */
+    private String generateConversationId() {
+        return "CONV_" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
     }
 }
