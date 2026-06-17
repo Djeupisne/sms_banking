@@ -21,9 +21,6 @@ public class ClientController {
     private final ClientRepository clientRepository;
     private final AccountRepository accountRepository;
 
-    /**
-     * Récupère tous les comptes d'un client à partir de son numéro de téléphone
-     */
     @GetMapping("/{phoneNumber}/accounts")
     @PreAuthorize("hasAnyRole('USER', 'ADMIN')")
     public ResponseEntity<List<Account>> getAccountsByPhone(@PathVariable String phoneNumber) {
@@ -32,26 +29,10 @@ public class ClientController {
         Client client = clientRepository.findByPhoneNumber(phoneNumber)
                 .orElseThrow(() -> new RuntimeException("Client non trouvé avec ce numéro: " + phoneNumber));
 
-        List<Account> accounts = accountRepository.findByClientId(client.getId());
+        //  Utiliser findAllByClientId au lieu de findByClientId
+        List<Account> accounts = accountRepository.findAllByClientId(client.getId());
 
         log.info("{} compte(s) trouvé(s) pour le client {}", accounts.size(), phoneNumber);
-        return ResponseEntity.ok(accounts);
-    }
-
-    /**
-     * Récupère les comptes actifs d'un client
-     */
-    @GetMapping("/{phoneNumber}/accounts/active")
-    @PreAuthorize("hasAnyRole('USER', 'ADMIN')")
-    public ResponseEntity<List<Account>> getActiveAccountsByPhone(@PathVariable String phoneNumber) {
-        log.info("Récupération des comptes actifs pour le numéro: {}", phoneNumber);
-
-        Client client = clientRepository.findByPhoneNumber(phoneNumber)
-                .orElseThrow(() -> new RuntimeException("Client non trouvé avec ce numéro: " + phoneNumber));
-
-        List<Account> accounts = accountRepository.findByClientIdAndActiveTrue(client.getId());
-
-        log.info("{} compte(s) actif(s) trouvé(s) pour le client {}", accounts.size(), phoneNumber);
         return ResponseEntity.ok(accounts);
     }
 }
