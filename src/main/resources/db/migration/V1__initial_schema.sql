@@ -22,7 +22,6 @@ CREATE TABLE IF NOT EXISTS clients (
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- Index pour clients
 CREATE INDEX IF NOT EXISTS idx_clients_phone_number ON clients(phone_number);
 CREATE INDEX IF NOT EXISTS idx_clients_phone_active ON clients(phone_number, active);
 
@@ -45,7 +44,6 @@ CREATE TABLE IF NOT EXISTS accounts (
     updated_at TIMESTAMP
 );
 
--- Index pour accounts
 CREATE INDEX IF NOT EXISTS idx_accounts_client_id ON accounts(client_id);
 CREATE INDEX IF NOT EXISTS idx_accounts_account_number ON accounts(account_number);
 CREATE INDEX IF NOT EXISTS idx_accounts_active ON accounts(active);
@@ -87,7 +85,6 @@ CREATE TABLE IF NOT EXISTS transactions (
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- Index pour transactions
 CREATE INDEX IF NOT EXISTS idx_transactions_account_id ON transactions(account_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_transaction_id ON transactions(transaction_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_account_timestamp ON transactions(account_id, timestamp);
@@ -106,15 +103,12 @@ CREATE TABLE IF NOT EXISTS sms_logs (
     processed_successfully BOOLEAN DEFAULT TRUE,
     related_sms_id BIGINT,
     reference VARCHAR(50) UNIQUE,
-    conversation_id VARCHAR(50),
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- Index pour sms_logs
 CREATE INDEX IF NOT EXISTS idx_sms_logs_sender ON sms_logs(sender);
 CREATE INDEX IF NOT EXISTS idx_sms_logs_timestamp ON sms_logs(timestamp);
 CREATE INDEX IF NOT EXISTS idx_sms_logs_reference ON sms_logs(reference);
-CREATE INDEX IF NOT EXISTS idx_sms_logs_conversation_id ON sms_logs(conversation_id);
 
 -- ============================================================
 -- 6. TABLE TRANSACTION_LOGS (V15)
@@ -141,7 +135,6 @@ CREATE TABLE IF NOT EXISTS transaction_logs (
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- Index pour transaction_logs
 CREATE INDEX IF NOT EXISTS idx_transaction_logs_username ON transaction_logs(username);
 CREATE INDEX IF NOT EXISTS idx_transaction_logs_created_at ON transaction_logs(created_at);
 CREATE INDEX IF NOT EXISTS idx_transaction_logs_status ON transaction_logs(status);
@@ -159,7 +152,6 @@ CREATE TABLE IF NOT EXISTS password_reset_tokens (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Index pour password_reset_tokens
 CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_token ON password_reset_tokens(token);
 CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_email ON password_reset_tokens(email);
 CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_expiry ON password_reset_tokens(expiry_date);
@@ -168,16 +160,14 @@ CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_expiry ON password_reset_to
 -- DONNÉES DE TEST
 -- ============================================================
 
--- 1. Clients (V10)
 INSERT INTO clients (first_name, last_name, phone_number, email, date_of_birth, address, active, created_at, updated_at)
 VALUES
-('Hermann', 'AKUE', '+22890000001', 'hermann.akue@email.com', '1985-03-15', 'Lomé, Togo', TRUE, NOW(), NOW()),
-('Elom', 'AFEZOUNON', '+22890000002', 'elom.afezounon@email.com', '1990-07-22', 'Lomé, Togo', TRUE, NOW(), NOW()),
+('Hermann', 'AKUE', '+22890000001', 'hermann.akue@email.com', '1985-03-15', 'Lome, Togo', TRUE, NOW(), NOW()),
+('Elom', 'AFEZOUNON', '+22890000002', 'elom.afezounon@email.com', '1990-07-22', 'Lome, Togo', TRUE, NOW(), NOW()),
 ('Valion', 'KPIZIA', '+22890000003', 'valion.kpizia@email.com', '1988-11-08', 'Kara, Togo', TRUE, NOW(), NOW()),
-('Essomina', 'ROYODE', '+22890000004', 'essomina.royode@email.com', '1992-05-20', 'Sokodé, Togo', TRUE, NOW(), NOW())
+('Essomina', 'ROYODE', '+22890000004', 'essomina.royode@email.com', '1992-05-20', 'Sokode, Togo', TRUE, NOW(), NOW())
 ON CONFLICT (phone_number) DO NOTHING;
 
--- 2. Comptes (V10 + V11)
 INSERT INTO accounts (account_number, client_id, balance, currency, active, account_type, status, created_at, updated_at)
 SELECT 'COMPTE001', id, 500000.00, 'XOF', TRUE, 'CURRENT', 'ACTIVE', NOW(), NOW()
 FROM clients WHERE phone_number = '+22890000001'
@@ -198,13 +188,11 @@ SELECT 'COMPTE004', id, 100000.00, 'XOF', TRUE, 'CURRENT', 'ACTIVE', NOW(), NOW(
 FROM clients WHERE phone_number = '+22890000004'
 ON CONFLICT (account_number) DO NOTHING;
 
--- Deuxième compte pour Hermann (pour tester le sélecteur)
 INSERT INTO accounts (account_number, client_id, balance, currency, active, account_type, status, created_at, updated_at)
 SELECT 'COMPTE005', id, 250000.00, 'XOF', TRUE, 'SAVINGS', 'ACTIVE', NOW(), NOW()
 FROM clients WHERE phone_number = '+22890000001'
 ON CONFLICT (account_number) DO NOTHING;
 
--- Compte système frais Mobile Money
 INSERT INTO accounts (
     account_number,
     client_id,
@@ -233,12 +221,10 @@ INSERT INTO accounts (
     NOW()
 ) ON CONFLICT (account_number) DO NOTHING;
 
--- 3. Utilisateurs (V14)
--- Admin (password: AdminOrabank2024!)
 INSERT INTO users (username, password, full_name, email, role, active, created_at)
 VALUES (
     'admin',
-    '$2a$10$XQ6lXnXQ6lXnXQ6lXnXQ6lXnXQ6lXnXQ6lXnXQ6lXnXQ6lXnXQ6lXnXQ6',
+    '$2a$12$0iA4OLd/sKwkaerupX90jOxbfOqJZiunFicUzFRS2//sLnNU4/RHO',
     'Administrateur',
     'admin@orabank.tg',
     'ADMIN',
@@ -246,7 +232,6 @@ VALUES (
     NOW()
 ) ON CONFLICT (username) DO NOTHING;
 
--- Viewer (password: viewer123)
 INSERT INTO users (username, password, full_name, email, role, active, created_at)
 VALUES (
     'viewer',
@@ -258,9 +243,8 @@ VALUES (
     NOW()
 ) ON CONFLICT (username) DO NOTHING;
 
--- 4. Transactions (V10)
 INSERT INTO transactions (transaction_id, account_id, type, amount, status, description, created_at)
-SELECT 'TXN001', id, 'CREDIT', 100000.00, 'COMPLETED', 'Dépôt initial', NOW()
+SELECT 'TXN001', id, 'CREDIT', 100000.00, 'COMPLETED', 'Depot initial', NOW()
 FROM accounts WHERE account_number = 'COMPTE001'
 ON CONFLICT (transaction_id) DO NOTHING;
 
@@ -270,7 +254,7 @@ FROM accounts WHERE account_number = 'COMPTE001'
 ON CONFLICT (transaction_id) DO NOTHING;
 
 INSERT INTO transactions (transaction_id, account_id, type, amount, status, description, created_at)
-SELECT 'TXN003', id, 'CREDIT', 150000.00, 'COMPLETED', 'Dépôt salaire', NOW()
+SELECT 'TXN003', id, 'CREDIT', 150000.00, 'COMPLETED', 'Depot salaire', NOW()
 FROM accounts WHERE account_number = 'COMPTE002'
 ON CONFLICT (transaction_id) DO NOTHING;
 
@@ -280,17 +264,16 @@ FROM accounts WHERE account_number = 'COMPTE003'
 ON CONFLICT (transaction_id) DO NOTHING;
 
 INSERT INTO transactions (transaction_id, account_id, type, amount, status, description, created_at)
-SELECT 'TXN005', id, 'CREDIT', 100000.00, 'COMPLETED', 'Dépôt initial', NOW()
+SELECT 'TXN005', id, 'CREDIT', 100000.00, 'COMPLETED', 'Depot initial', NOW()
 FROM accounts WHERE account_number = 'COMPTE004'
 ON CONFLICT (transaction_id) DO NOTHING;
 
--- 5. SMS Logs (V10)
-INSERT INTO sms_logs (sender, "to", direction, body, timestamp, processed_successfully, reference, conversation_id, created_at)
-SELECT '+22890000001', 'ORABANK', 'INCOMING', 'SOLDE?', NOW(), TRUE, 'SMS_' || to_char(NOW(), 'YYYYMMDDHH24MISS') || '_0001', 'CONV_' || to_char(NOW(), 'YYYYMMDDHH24MISS'), NOW()
+INSERT INTO sms_logs (sender, "to", direction, body, timestamp, processed_successfully, reference, created_at)
+SELECT '+22890000001', 'ORABANK', 'INCOMING', 'SOLDE?', NOW(), TRUE, 'SMS_' || to_char(NOW(), 'YYYYMMDDHH24MISS') || '_0001', NOW()
 WHERE NOT EXISTS (SELECT 1 FROM sms_logs LIMIT 1);
 
-INSERT INTO sms_logs (sender, "to", direction, body, timestamp, processed_successfully, reference, conversation_id, created_at)
-SELECT 'ORABANK', '+22890000001', 'OUTGOING', 'ORABANK - Votre solde est de: 500000 FCFA', NOW(), TRUE, 'SMS_' || to_char(NOW(), 'YYYYMMDDHH24MISS') || '_0002', 'CONV_' || to_char(NOW(), 'YYYYMMDDHH24MISS'), NOW()
+INSERT INTO sms_logs (sender, "to", direction, body, timestamp, processed_successfully, reference, created_at)
+SELECT 'ORABANK', '+22890000001', 'OUTGOING', 'ORABANK - Votre solde est de: 500000 FCFA', NOW(), TRUE, 'SMS_' || to_char(NOW(), 'YYYYMMDDHH24MISS') || '_0002', NOW()
 WHERE NOT EXISTS (SELECT 1 FROM sms_logs WHERE direction = 'OUTGOING');
 
 -- ============================================================

@@ -12,8 +12,7 @@ import lombok.NoArgsConstructor;
 public class SmsResponseDto {
     private String to;
     private String message;
-    private String reference;       
-    private String conversationId;  
+    private String reference;
     private String status;
 
     public SmsResponseDto(String message) {
