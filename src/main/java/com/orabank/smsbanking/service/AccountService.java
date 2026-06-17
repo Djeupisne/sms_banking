@@ -133,7 +133,7 @@ public class AccountService {
     }
 
     // ============================================================
-    // MÉTHODES EXISTANTES (non modifiées)
+    // MÉTHODES EXISTANTES
     // ============================================================
 
     @Transactional(propagation = Propagation.REQUIRES_NEW, readOnly = true)
@@ -268,7 +268,6 @@ public class AccountService {
                             senderAccount.getBalance().longValue(), totalAmount.longValue()));
         }
 
-        // 1. Débiter l'émetteur du montant total
         senderAccount.setBalance(senderAccount.getBalance().subtract(totalAmount));
         accountRepository.save(senderAccount);
 
@@ -285,7 +284,6 @@ public class AccountService {
         log.info("Débit virement interne - Compte: {}, Montant: {} FCFA, Réf: {}, Nouveau solde: {} FCFA",
                 senderAccount.getAccountNumber(), totalAmount, transactionReference, senderAccount.getBalance());
 
-        // 2. Créditer le bénéficiaire du montant du transfert uniquement
         recipientAccount.setBalance(recipientAccount.getBalance().add(amount));
         accountRepository.save(recipientAccount);
 
@@ -302,7 +300,6 @@ public class AccountService {
         log.info("Crédit virement interne - Compte: {}, Montant: {} FCFA, Réf: {}, Nouveau solde: {} FCFA",
                 recipientAccount.getAccountNumber(), amount, transactionReference, recipientAccount.getBalance());
 
-        // 3. Créditer le compte de frais si des frais ont été appliqués
         if (fees.compareTo(BigDecimal.ZERO) > 0) {
             creditInternalTransferFeesAccount(fees, transactionReference, amount);
         }
@@ -499,25 +496,31 @@ public class AccountService {
     // NOUVELLES MÉTHODES POUR LA MULTI-COMPTES
     // ============================================================
 
-    /**
-     * Récupère la liste des comptes d'un client par son numéro de téléphone
-     */
     @Transactional(readOnly = true)
     public List<Account> getAccountsByPhone(String phoneNumber) {
+        log.info("=== getAccountsByPhone START ===");
+        log.info("Looking for client with phone: {}", phoneNumber);
+
         Client client = clientRepository.findByPhoneNumber(phoneNumber)
-                .orElseThrow(() -> new ClientNotFoundException(
-                        "Client non trouvé pour le numéro: " + LoggingUtil.maskPhoneNumber(phoneNumber)));
+                .orElseThrow(() -> {
+                    log.error("Client not found for phone: {}", phoneNumber);
+                    return new ClientNotFoundException(
+                            "Client non trouvé pour le numéro: " + LoggingUtil.maskPhoneNumber(phoneNumber));
+                });
+
+        log.info("Client found: id={}, name={}", client.getId(), client.getFirstName() + " " + client.getLastName());
 
         List<Account> accounts = accountRepository.findAllByClientId(client.getId());
-        log.debug("Récupération des comptes - Client: {}, Nombre de comptes: {}",
-                LoggingUtil.maskPhoneNumber(phoneNumber), accounts.size());
+        log.info("Accounts found: {}", accounts.size());
+
+        for (Account acc : accounts) {
+            log.info("Account: id={}, number={}, balance={}, active={}",
+                    acc.getId(), acc.getAccountNumber(), acc.getBalance(), acc.isActive());
+        }
 
         return accounts;
     }
 
-    /**
-     * Récupère les comptes actifs d'un client par son numéro de téléphone
-     */
     @Transactional(readOnly = true)
     public List<Account> getActiveAccountsByPhone(String phoneNumber) {
         Client client = clientRepository.findByPhoneNumber(phoneNumber)
@@ -531,9 +534,6 @@ public class AccountService {
         return accounts;
     }
 
-    /**
-     * Récupère un compte spécifique par clientId et numéro de compte
-     */
     @Transactional(readOnly = true)
     public Optional<Account> getAccountByPhoneAndAccountNumber(String phoneNumber, String accountNumber) {
         Client client = clientRepository.findByPhoneNumber(phoneNumber)
@@ -546,9 +546,6 @@ public class AccountService {
                 .findFirst();
     }
 
-    /**
-     * Récupère le solde d'un compte spécifique
-     */
     @Transactional(readOnly = true)
     public BigDecimal getBalance(String phoneNumber, String accountNumber) {
         Account account = getAccountByPhoneAndAccountNumber(phoneNumber, accountNumber)
@@ -562,18 +559,12 @@ public class AccountService {
         return account.getBalance();
     }
 
-    /**
-     * Vérifie si un client a plusieurs comptes actifs
-     */
     @Transactional(readOnly = true)
     public boolean hasMultipleAccounts(String phoneNumber) {
         List<Account> accounts = getActiveAccountsByPhone(phoneNumber);
         return accounts.size() > 1;
     }
 
-    /**
-     * Récupère le nombre de comptes d'un client
-     */
     @Transactional(readOnly = true)
     public int getAccountCount(String phoneNumber) {
         Client client = clientRepository.findByPhoneNumber(phoneNumber)
@@ -583,9 +574,6 @@ public class AccountService {
         return accountRepository.findAllByClientId(client.getId()).size();
     }
 
-    /**
-     * Effectue un transfert depuis un compte spécifique
-     */
     @Transactional
     public Transaction transferFromAccount(Account sourceAccount, String recipientPhoneNumber,
                                            BigDecimal amount, String description) {
@@ -599,7 +587,6 @@ public class AccountService {
                 LoggingUtil.maskPhoneNumber(recipientPhoneNumber),
                 amount, fees);
 
-        // Vérifier le solde du compte source
         if (sourceAccount.getBalance().compareTo(totalAmount) < 0) {
             log.warn("Solde insuffisant sur compte {} - Solde: {} FCFA, Montant requis: {} FCFA",
                     sourceAccount.getAccountNumber(), sourceAccount.getBalance(), totalAmount);
@@ -610,7 +597,6 @@ public class AccountService {
                             totalAmount.longValue()));
         }
 
-        // Récupérer le bénéficiaire
         Client recipientClient = clientRepository.findByPhoneNumber(recipientPhoneNumber)
                 .orElseThrow(() -> new ClientNotFoundException(
                         "Client bénéficiaire non trouvé: " + LoggingUtil.maskPhoneNumber(recipientPhoneNumber)));
@@ -618,7 +604,6 @@ public class AccountService {
         Account recipientAccount = accountRepository.findByClientId(recipientClient.getId())
                 .orElseThrow(() -> new ClientNotFoundException("Aucun compte trouvé pour le bénéficiaire"));
 
-        // 1. Débiter l'émetteur
         sourceAccount.setBalance(sourceAccount.getBalance().subtract(totalAmount));
         accountRepository.save(sourceAccount);
 
@@ -637,7 +622,6 @@ public class AccountService {
         log.info("Débit virement interne - Compte: {}, Montant: {} FCFA, Réf: {}, Nouveau solde: {} FCFA",
                 sourceAccount.getAccountNumber(), totalAmount, transactionReference, sourceAccount.getBalance());
 
-        // 2. Créditer le bénéficiaire
         recipientAccount.setBalance(recipientAccount.getBalance().add(amount));
         accountRepository.save(recipientAccount);
 
@@ -653,7 +637,6 @@ public class AccountService {
         creditTransaction.setCreatedAt(LocalDateTime.now());
         transactionRepository.save(creditTransaction);
 
-        // 3. Créditer le compte de frais si nécessaire
         if (fees.compareTo(BigDecimal.ZERO) > 0) {
             creditInternalTransferFeesAccount(fees, transactionReference, amount);
         }
@@ -666,9 +649,6 @@ public class AccountService {
         return debitTransaction;
     }
 
-    /**
-     * Récupère l'historique des transactions d'un compte spécifique
-     */
     @Transactional(readOnly = true)
     public List<Transaction> getLastTransactions(String phoneNumber, String accountNumber, int limit) {
         Account account = getAccountByPhoneAndAccountNumber(phoneNumber, accountNumber)

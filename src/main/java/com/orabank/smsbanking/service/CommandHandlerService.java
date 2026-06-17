@@ -49,7 +49,10 @@ public class CommandHandlerService {
     // ============================================================
 
     private String normalizePhoneNumber(String phoneNumber) {
-        return SmsUtils.normalizePhoneNumber(phoneNumber);
+        log.info("Normalizing phone number: {}", phoneNumber);
+        String normalized = SmsUtils.normalizePhoneNumber(phoneNumber);
+        log.info("Normalized result: {}", normalized);
+        return normalized;
     }
 
     // ============================================================
@@ -57,9 +60,10 @@ public class CommandHandlerService {
     // ============================================================
 
     public String handleCommand(String command, String phoneNumber, String rawMessage) {
-        log.info("Traitement commande: {} pour {}", command, LoggingUtil.maskPhoneNumber(phoneNumber));
+        log.info("=== HANDLE COMMAND START ===");
+        log.info("Command: {}, Phone: {}, RawMessage: {}", command, LoggingUtil.maskPhoneNumber(phoneNumber), rawMessage);
 
-        return switch (command.toUpperCase()) {
+        String result = switch (command.toUpperCase()) {
             case "SOLDE" -> handleBalance(phoneNumber, rawMessage);
             case "HISTO" -> handleHistory(phoneNumber, rawMessage);
             case "OTP" -> handleOtp(phoneNumber);
@@ -67,6 +71,9 @@ public class CommandHandlerService {
             case "HELP" -> handleHelp();
             default -> handleUnknownCommand(command);
         };
+
+        log.info("=== HANDLE COMMAND RESULT: {}", result);
+        return result;
     }
 
     // ============================================================
@@ -75,7 +82,12 @@ public class CommandHandlerService {
 
     private String handleBalance(String phoneNumber, String rawMessage) {
         try {
+            log.info("=== HANDLE BALANCE START ===");
+            log.info("phoneNumber: {}, rawMessage: {}", phoneNumber, rawMessage);
+
             String normalizedPhone = normalizePhoneNumber(phoneNumber);
+            log.info("normalizedPhone: {}", normalizedPhone);
+
             if (normalizedPhone == null) {
                 return String.format("%s - Numéro de téléphone invalide.", smsPrefix);
             }
@@ -85,17 +97,20 @@ public class CommandHandlerService {
             if (matcher.matches()) {
                 accountNumber = matcher.group(1);
             }
+            log.info("accountNumber extracted: {}", accountNumber);
 
-            // Récupération des comptes
+            log.info("Calling accountService.getAccountsByPhone({})", normalizedPhone);
             List<Account> accounts = accountService.getAccountsByPhone(normalizedPhone);
+            log.info("Accounts found: {}", accounts.size());
 
             if (accounts.isEmpty()) {
+                log.warn("No accounts found for phone: {}", normalizedPhone);
                 return String.format("%s - Aucun compte trouvé pour ce client.", smsPrefix);
             }
 
             // Si un numéro de compte est spécifié
             if (accountNumber != null && !accountNumber.isEmpty()) {
-                // Créer une copie final du numéro pour l'utiliser dans la lambda
+                log.info("Looking for specific account: {}", accountNumber);
                 final String finalAccountNumber = accountNumber;
 
                 Optional<Account> optionalAccount = accounts.stream()
@@ -106,11 +121,13 @@ public class CommandHandlerService {
                     String accountList = accounts.stream()
                             .map(Account::getAccountNumber)
                             .collect(Collectors.joining(", "));
+                    log.warn("Account {} not found. Available: {}", accountNumber, accountList);
                     return String.format("%s - Compte %s introuvable. Vos comptes: %s",
                             smsPrefix, accountNumber, accountList);
                 }
 
                 Account account = optionalAccount.get();
+                log.info("Balance found: {} for account {}", account.getBalance(), account.getAccountNumber());
                 return String.format("%s - Votre solde est de: %d FCFA (%s)",
                         smsPrefix,
                         account.getBalance().longValue(),
@@ -119,11 +136,13 @@ public class CommandHandlerService {
 
             // Pas de numéro de compte spécifié
             if (accounts.size() == 1) {
+                log.info("Single account found, returning balance");
                 return String.format("%s - Votre solde est de: %d FCFA",
                         smsPrefix, accounts.get(0).getBalance().longValue());
             }
 
             // Plusieurs comptes - retourner la liste
+            log.info("Multiple accounts found ({})", accounts.size());
             StringBuilder sb = new StringBuilder();
             sb.append(smsPrefix).append(" - Vos comptes:\n");
             for (Account account : accounts) {
@@ -135,12 +154,11 @@ public class CommandHandlerService {
             return sb.toString().trim();
 
         } catch (ClientNotFoundException e) {
-            log.warn("Client non trouvé: {}", LoggingUtil.maskPhoneNumber(phoneNumber));
+            log.warn("Client non trouvé: {}", LoggingUtil.maskPhoneNumber(phoneNumber), e);
             return String.format("%s - Client non trouvé. Veuillez contacter votre agence.", smsPrefix);
         } catch (Exception e) {
-            log.error("Erreur lors de la consultation du solde pour {}",
-                    LoggingUtil.maskPhoneNumber(phoneNumber), e);
-            return String.format("%s - Service temporairement indisponible. Veuillez réessayer.", smsPrefix);
+            log.error("ERREUR DANS HANDLE BALANCE: {}", e.getMessage(), e);
+            return String.format("%s - Erreur technique. Veuillez réessayer.", smsPrefix);
         }
     }
 
@@ -150,6 +168,8 @@ public class CommandHandlerService {
 
     private String handleHistory(String phoneNumber, String rawMessage) {
         try {
+            log.info("=== HANDLE HISTORY START ===");
+
             String normalizedPhone = normalizePhoneNumber(phoneNumber);
             if (normalizedPhone == null) {
                 return String.format("%s - Numéro de téléphone invalide.", smsPrefix);
@@ -167,7 +187,6 @@ public class CommandHandlerService {
                 return String.format("%s - Aucun compte trouvé pour ce client.", smsPrefix);
             }
 
-            // Sélectionner le compte
             Account selectedAccount;
             if (accountNumber != null && !accountNumber.isEmpty()) {
                 final String finalAccountNumber = accountNumber;
@@ -258,6 +277,8 @@ public class CommandHandlerService {
 
     private String handleTransfer(String phoneNumber, String rawMessage) {
         try {
+            log.info("=== HANDLE TRANSFER START ===");
+
             String normalizedPhone = normalizePhoneNumber(phoneNumber);
             if (normalizedPhone == null) {
                 return String.format("%s - Numéro de téléphone invalide.", smsPrefix);
@@ -307,7 +328,6 @@ public class CommandHandlerService {
                 return String.format("%s - Aucun compte trouvé pour ce client.", smsPrefix);
             }
 
-            // Sélectionner le compte source
             Account sourceAccount;
             if (accountNumber != null && !accountNumber.isEmpty()) {
                 final String finalAccountNumber = accountNumber;
