@@ -13,9 +13,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -70,6 +68,24 @@ public class ApiController {
     public ResponseEntity<List<Client>> getAllClients() {
         log.info("Récupération de la liste des clients");
         return ResponseEntity.ok(clientRepository.findAll());
+    }
+
+    // ✅ NOUVEAU : Récupère les comptes d'un client par son numéro de téléphone
+    @GetMapping("/clients/{phoneNumber}/accounts")
+    @PreAuthorize("hasAnyRole('USER', 'ADMIN')")
+    public ResponseEntity<List<Account>> getAccountsByPhone(@PathVariable String phoneNumber) {
+        log.info("Récupération des comptes pour le numéro: {}", phoneNumber);
+
+        // Nettoyer le numéro de téléphone
+        String cleanPhoneNumber = phoneNumber.startsWith("+") ? phoneNumber : "+" + phoneNumber;
+
+        Client client = clientRepository.findByPhoneNumber(cleanPhoneNumber)
+                .orElseThrow(() -> new RuntimeException("Client non trouvé avec ce numéro: " + cleanPhoneNumber));
+
+        List<Account> accounts = accountRepository.findAllByClientId(client.getId());
+
+        log.info("{} compte(s) trouvé(s) pour le client {}", accounts.size(), cleanPhoneNumber);
+        return ResponseEntity.ok(accounts);
     }
 
     /**
