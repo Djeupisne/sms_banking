@@ -27,6 +27,7 @@ import org.springframework.web.bind.annotation.*;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.regex.Pattern;
 
@@ -63,7 +64,7 @@ public class AdminController {
                 transferRequest.getAmount(),
                 maskPhoneNumber(transferRequest.getRecipientPhone()));
 
-        // ✅ Convertir BigDecimal en Double
+        //  Convertir BigDecimal en Double
         Double amount = transferRequest.getAmount().doubleValue();
         Double fees = Math.ceil(amount * 0.1);
         Double totalAmount = amount + fees;
@@ -154,7 +155,7 @@ public class AdminController {
                 maskAccountNumber(request.getTargetAccountNumber()),
                 request.getAmount());
 
-        // ✅ Convertir BigDecimal en Double
+        //  Convertir BigDecimal en Double
         Double amount = request.getAmount().doubleValue();
         String transactionRef = UUID.randomUUID().toString();
 
@@ -242,7 +243,7 @@ public class AdminController {
         log.info("Demande de crédit manuel - Compte: {}, Montant: {}",
                 maskAccountNumber(request.getAccountNumber()), request.getAmount());
 
-        // ✅ Convertir BigDecimal en Double
+        //  Convertir BigDecimal en Double
         Double amount = request.getAmount().doubleValue();
         String transactionRef = UUID.randomUUID().toString();
 
@@ -308,7 +309,7 @@ public class AdminController {
         log.info("Demande de débit manuel - Compte: {}, Montant: {}",
                 maskAccountNumber(request.getAccountNumber()), request.getAmount());
 
-        // ✅ Convertir BigDecimal en Double
+        //  Convertir BigDecimal en Double
         Double amount = request.getAmount().doubleValue();
         String transactionRef = UUID.randomUUID().toString();
 
@@ -376,6 +377,85 @@ public class AdminController {
         }
     }
 
+    
+    //  NOUVEL ENDPOINT : Débit depuis téléphone
+    
+    @PostMapping("/accounts/debit-from-phone")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Map<String, Object>> debitFromPhone(@RequestBody DebitFromPhoneRequest request) {
+        log.info("Débit depuis téléphone - Phone: {}, Montant: {}",
+                maskPhoneNumber(request.getPhoneNumber()), request.getAmount());
+
+        Double amount = request.getAmount();
+        String transactionRef = UUID.randomUUID().toString();
+
+        try {
+            // Validation du numéro de téléphone
+            if (!PHONE_NUMBER_PATTERN.matcher(request.getPhoneNumber()).matches()) {
+                loggingService.logTransaction("ADMIN_DEBIT_FROM_PHONE", "DEBIT_MANUEL", amount,
+                        null, null, request.getPhoneNumber(), null,
+                        request.getDescription(), transactionRef, "FAILED", "Numéro de téléphone invalide", 0.0, amount, httpServletRequest);
+                return ResponseEntity.badRequest()
+                        .body(Map.of("success", false, "message", "Numéro de téléphone invalide"));
+            }
+
+            // Rechercher le client par téléphone
+            Client client = clientRepository.findByPhoneNumber(request.getPhoneNumber())
+                    .orElseThrow(() -> new RuntimeException("Client non trouvé: " + request.getPhoneNumber()));
+
+            // Rechercher le compte du client
+            Account account = accountRepository.findByClientId(client.getId())
+                    .orElseThrow(() -> new RuntimeException("Compte non trouvé pour ce client"));
+
+            BigDecimal amountBd = BigDecimal.valueOf(request.getAmount());
+
+            // Vérifier le solde
+            if (account.getBalance().compareTo(amountBd) < 0) {
+                loggingService.logTransaction("ADMIN_DEBIT_FROM_PHONE", "DEBIT_MANUEL", amount,
+                        null, null, request.getPhoneNumber(), null,
+                        request.getDescription(), transactionRef, "FAILED", "Solde insuffisant", 0.0, amount, httpServletRequest);
+                return ResponseEntity.badRequest()
+                        .body(Map.of("success", false, "message", "Solde insuffisant. Solde actuel: " + account.getBalance() + " FCFA"));
+            }
+
+            // Débiter le compte
+            account.setBalance(account.getBalance().subtract(amountBd));
+            accountRepository.save(account);
+
+            // Enregistrer la transaction
+            Transaction transaction = new Transaction();
+            transaction.setAccountId(account.getId());
+            transaction.setAmount(amountBd);
+            transaction.setType("DEBIT_MANUEL");
+            transaction.setDescription(request.getDescription() != null ? request.getDescription() : "Débit manuel admin depuis téléphone");
+            transaction.setStatus(TransactionStatus.COMPLETED);
+            transaction.setCreatedAt(LocalDateTime.now());
+            transactionRepository.save(transaction);
+
+            // Log de succès
+            loggingService.logTransaction("ADMIN_DEBIT_FROM_PHONE", "DEBIT_MANUEL", amount,
+                    null, null, request.getPhoneNumber(), null,
+                    request.getDescription(), transactionRef, "SUCCESS", null, 0.0, amount, httpServletRequest);
+
+            log.info("Débit depuis téléphone effectué avec succès - Phone: {}, Montant: {}",
+                    maskPhoneNumber(request.getPhoneNumber()), amount);
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", "Débit effectué avec succès",
+                    "newBalance", account.getBalance().doubleValue()
+            ));
+
+        } catch (Exception e) {
+            loggingService.logTransaction("ADMIN_DEBIT_FROM_PHONE", "DEBIT_MANUEL", amount,
+                    null, null, request.getPhoneNumber(), null,
+                    request.getDescription(), transactionRef, "FAILED", e.getMessage(), 0.0, amount, httpServletRequest);
+            log.error("Erreur débit depuis téléphone", e);
+            return ResponseEntity.badRequest()
+                    .body(Map.of("success", false, "message", e.getMessage()));
+        }
+    }
+
     private String maskAccountNumber(String accountNumber) {
         if (accountNumber == null || accountNumber.length() < AppConstants.MIN_ACCOUNT_NUMBER_LENGTH) {
             return "****";
@@ -388,5 +468,23 @@ public class AdminController {
             return "****";
         }
         return phoneNumber.substring(0, Math.min(4, phoneNumber.length())) + "****";
+    }
+
+    
+    //  DTO pour debit-from-phone
+    
+    public static class DebitFromPhoneRequest {
+        private String phoneNumber;
+        private Double amount;
+        private String description;
+
+        public String getPhoneNumber() { return phoneNumber; }
+        public void setPhoneNumber(String phoneNumber) { this.phoneNumber = phoneNumber; }
+
+        public Double getAmount() { return amount; }
+        public void setAmount(Double amount) { this.amount = amount; }
+
+        public String getDescription() { return description; }
+        public void setDescription(String description) { this.description = description; }
     }
 }
