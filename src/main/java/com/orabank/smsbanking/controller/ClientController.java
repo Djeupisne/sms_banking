@@ -29,7 +29,6 @@ public class ClientController {
         Client client = clientRepository.findByPhoneNumber(phoneNumber)
                 .orElseThrow(() -> new RuntimeException("Client non trouvé avec ce numéro: " + phoneNumber));
 
-        //  Utiliser findAllByClientId au lieu de findByClientId
         List<Account> accounts = accountRepository.findAllByClientId(client.getId());
 
         log.info("{} compte(s) trouvé(s) pour le client {}", accounts.size(), phoneNumber);
