@@ -19,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -32,10 +33,14 @@ public class SmsProcessingService {
     private final SmsLogMapper smsLogMapper;
     private final SmsParser smsParser;
 
+    // ============================================================
+    // GÉNÉRATION DE RÉFÉRENCE AVEC UUID POUR ÉVITER LES DOUBLONS
+    // ============================================================
+
     private String generateReference() {
         String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
-        String random = String.format("%04d", (int)(Math.random() * 10000));
-        return "SMS_" + timestamp + "_" + random;
+        String uuid = UUID.randomUUID().toString().substring(0, 4).toUpperCase();
+        return "SMS_" + timestamp + "_" + uuid;
     }
 
     @Transactional(noRollbackFor = Exception.class)
@@ -82,18 +87,25 @@ public class SmsProcessingService {
             responseMessage = "ORABANK - Erreur technique. Veuillez reessayer.";
         }
 
+        // ============================================================
+        // SAUVEGARDE DU SMS SORTANT AVEC UNE NOUVELLE RÉFÉRENCE UNIQUE
+        // ============================================================
+
         try {
+            // Générer une nouvelle référence pour le SMS sortant pour éviter les doublons
+            String outgoingReference = generateReference();
+
             SmsLog outgoingLog = new SmsLog();
             outgoingLog.setSender(request.getTo());
             outgoingLog.setTo(normalizedFrom);
             outgoingLog.setBody(responseMessage);
             outgoingLog.setDirection(SmsDirection.OUTGOING);
-            outgoingLog.setReference(conversationReference);
+            outgoingLog.setReference(outgoingReference);  // ← UTILISER UNE NOUVELLE RÉFÉRENCE
             if (incomingLog != null) {
                 outgoingLog.setRelatedSmsId(incomingLog.getId());
             }
             smsLogRepository.save(outgoingLog);
-            log.info("SMS envoye - Ref: {}, To: {}", conversationReference, LoggingUtil.maskPhoneNumber(normalizedFrom));
+            log.info("SMS sortant sauvegarde - Ref: {}, To: {}", outgoingReference, LoggingUtil.maskPhoneNumber(normalizedFrom));
         } catch (Exception e) {
             log.error("Erreur sauvegarde SMS sortant", e);
         }
