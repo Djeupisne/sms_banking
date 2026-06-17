@@ -13,14 +13,17 @@ import java.util.Optional;
 @Repository
 public interface AccountRepository extends JpaRepository<Account, Long> {
 
+    //  Méthodes existantes
     Optional<Account> findByClientId(Long clientId);
-
     Optional<Account> findByAccountNumber(String accountNumber);
-
-    // NOUVELLES MÉTHODES POUR LES COMPTES SYSTÈME
     List<Account> findBySystemAccountTrue();
-
     List<Account> findByAccountType(Account.AccountType accountType);
+
+    //  NOUVELLES MÉTHODES pour récupérer les comptes d'un client
+    List<Account> findByClientIdAndActiveTrue(Long clientId);
+
+    @Query("SELECT a FROM Account a WHERE a.clientId = :clientId")
+    List<Account> findAllByClientId(@Param("clientId") Long clientId);
 
     @Query("SELECT a FROM Account a WHERE a.systemAccount = true AND a.accountType = :accountType")
     Optional<Account> findSystemAccountByType(@Param("accountType") Account.AccountType accountType);

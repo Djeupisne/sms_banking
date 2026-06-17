@@ -41,9 +41,9 @@ public class TransferController {
     private static final BigDecimal MAX_AMOUNT = new BigDecimal("500000");
     private static final BigDecimal FEE_PERCENTAGE = new BigDecimal("10");
 
-    // ============================================================
+    
     // 1. VIREMENT INTERNE (COMPTE → COMPTE) - 0% frais
-    // ============================================================
+    
     @PostMapping("/internal")
     @PreAuthorize("hasAnyRole('USER', 'ADMIN')")
     @Transactional
@@ -111,7 +111,7 @@ public class TransferController {
             creditTransaction.setCompletedAt(LocalDateTime.now());
             transactionRepository.save(creditTransaction);
 
-            // ✅ LOG DE SUCCÈS
+            //  LOG DE SUCCÈS
             loggingService.logTransaction(
                     "INTERNAL_TRANSFER", "VIREMENT_INTERNE", amount,
                     request.getSourceAccountNumber(), request.getTargetAccountNumber(),
@@ -131,7 +131,7 @@ public class TransferController {
             return ResponseEntity.ok(response);
 
         } catch (Exception e) {
-            // ✅ LOG D'ÉCHEC
+            //  LOG D'ÉCHEC
             loggingService.logTransaction(
                     "INTERNAL_TRANSFER", "VIREMENT_INTERNE", amount,
                     request.getSourceAccountNumber(), request.getTargetAccountNumber(),
@@ -146,15 +146,16 @@ public class TransferController {
         }
     }
 
-    // ============================================================
+    
     // 2. VIREMENT INTERNE (Téléphone Orabank → COMPTE) - 10% frais
-    // ============================================================
+    
     @PostMapping("/internal/from-phone")
     @PreAuthorize("hasAnyRole('USER', 'ADMIN')")
     @Transactional
     public ResponseEntity<Map<String, Object>> internalTransferFromPhone(@RequestBody InternalFromPhoneRequest request) {
-        log.info("Virement interne depuis téléphone - Source Phone: {}, Target Account: {}, Amount: {} FCFA",
-                request.getSourcePhone(), request.getTargetAccountNumber(), request.getAmount());
+        log.info("Virement interne depuis téléphone - Phone: {}, Source Account: {}, Target: {}, Amount: {}",
+                request.getSourcePhone(), request.getSourceAccountNumber(),
+                request.getTargetAccountNumber(), request.getAmount());
 
         Map<String, Object> response = new HashMap<>();
         Double amount = request.getAmount();
@@ -167,6 +168,7 @@ public class TransferController {
             BigDecimal feesBd = new BigDecimal(fees);
             BigDecimal totalAmountBd = new BigDecimal(totalAmount);
 
+            // Validation du montant
             if (amountBd.compareTo(MAX_AMOUNT) > 0) {
                 response.put("success", false);
                 response.put("message", "Le montant maximum autorisé est de 500 000 FCFA");
@@ -179,15 +181,36 @@ public class TransferController {
                 return ResponseEntity.badRequest().body(response);
             }
 
+            //  Vérifier le client
             Client sourceClient = clientRepository.findByPhoneNumber(request.getSourcePhone())
                     .orElseThrow(() -> new RuntimeException("Client Orabank non trouvé avec ce numéro: " + request.getSourcePhone()));
 
-            Account sourceAccount = accountRepository.findByClientId(sourceClient.getId())
-                    .orElseThrow(() -> new RuntimeException("Compte non trouvé pour ce client: " + request.getSourcePhone()));
+            //  Récupérer le compte source spécifique (si fourni)
+            Account sourceAccount;
+            if (request.getSourceAccountNumber() != null && !request.getSourceAccountNumber().isEmpty()) {
+                // L'utilisateur a choisi un compte spécifique
+                sourceAccount = accountRepository.findByAccountNumber(request.getSourceAccountNumber())
+                        .orElseThrow(() -> new RuntimeException("Compte source non trouvé: " + request.getSourceAccountNumber()));
 
+                //  Vérifier que le compte appartient bien au client
+                if (!sourceAccount.getClientId().equals(sourceClient.getId())) {
+                    throw new RuntimeException("Ce compte n'appartient pas à ce client");
+                }
+            } else {
+                // Fallback: utiliser le premier compte actif du client
+                List<Account> clientAccounts = accountRepository.findByClientIdAndActiveTrue(sourceClient.getId());
+                if (clientAccounts.isEmpty()) {
+                    throw new RuntimeException("Aucun compte actif trouvé pour ce client");
+                }
+                sourceAccount = clientAccounts.get(0);
+                log.warn("Aucun compte source spécifié, utilisation du compte par défaut: {}", sourceAccount.getAccountNumber());
+            }
+
+            // Récupérer le compte cible
             Account targetAccount = accountRepository.findByAccountNumber(request.getTargetAccountNumber())
                     .orElseThrow(() -> new RuntimeException("Compte cible non trouvé: " + request.getTargetAccountNumber()));
 
+            // Vérifier le solde
             if (sourceAccount.getBalance().compareTo(totalAmountBd) < 0) {
                 response.put("success", false);
                 response.put("message", "Solde insuffisant. Total requis: " + totalAmount + " FCFA (dont " + fees + " FCFA de frais)");
@@ -247,10 +270,10 @@ public class TransferController {
                 }
             }
 
-            // ✅ LOG DE SUCCÈS
+            //  LOG DE SUCCÈS avec le numéro de compte source
             loggingService.logTransaction(
                     "INTERNAL_TRANSFER_FROM_PHONE", "VIREMENT_INTERNE", amount,
-                    null, request.getTargetAccountNumber(),
+                    sourceAccount.getAccountNumber(), request.getTargetAccountNumber(),
                     request.getSourcePhone(), null,
                     request.getDescription(), transactionRef,
                     "SUCCESS", null, fees, totalAmount, httpServletRequest
@@ -262,15 +285,16 @@ public class TransferController {
             response.put("fees", fees.intValue());
             response.put("total", totalAmount.intValue());
             response.put("sourcePhone", request.getSourcePhone());
+            response.put("sourceAccount", sourceAccount.getAccountNumber());
             response.put("targetAccount", request.getTargetAccountNumber());
 
             return ResponseEntity.ok(response);
 
         } catch (Exception e) {
-            // ✅ LOG D'ÉCHEC
+            //  LOG D'ÉCHEC
             loggingService.logTransaction(
                     "INTERNAL_TRANSFER_FROM_PHONE", "VIREMENT_INTERNE", amount,
-                    null, request.getTargetAccountNumber(),
+                    request.getSourceAccountNumber(), request.getTargetAccountNumber(),
                     request.getSourcePhone(), null,
                     request.getDescription(), transactionRef,
                     "FAILED", e.getMessage(), fees, totalAmount, httpServletRequest
@@ -282,9 +306,9 @@ public class TransferController {
         }
     }
 
-    // ============================================================
+    
     // 3. TRANSFERT MOBILE MONEY (COMPTE → Téléphone) - 10% frais
-    // ============================================================
+    
     @PostMapping("/mobile-money/from-account")
     @PreAuthorize("hasAnyRole('USER', 'ADMIN')")
     @Transactional
@@ -355,7 +379,7 @@ public class TransferController {
                     transactionRepository.save(feesTransaction);
                 }
 
-                // ✅ LOG DE SUCCÈS
+                //  LOG DE SUCCÈS
                 loggingService.logTransaction(
                         "MOBILE_MONEY_FROM_ACCOUNT", "DEBIT_MOBILE_MONEY", amount,
                         request.getAccountNumber(), null,
@@ -371,7 +395,7 @@ public class TransferController {
                 response.put("total", totalAmount.intValue());
                 response.put("recipientPhone", request.getRecipientPhone());
             } else {
-                // ✅ LOG D'ÉCHEC
+                //  LOG D'ÉCHEC
                 loggingService.logTransaction(
                         "MOBILE_MONEY_FROM_ACCOUNT", "DEBIT_MOBILE_MONEY", amount,
                         request.getAccountNumber(), null,
@@ -387,7 +411,7 @@ public class TransferController {
             return ResponseEntity.ok(response);
 
         } catch (Exception e) {
-            // ✅ LOG D'ÉCHEC
+            //  LOG D'ÉCHEC
             loggingService.logTransaction(
                     "MOBILE_MONEY_FROM_ACCOUNT", "DEBIT_MOBILE_MONEY", amount,
                     request.getAccountNumber(), null,
@@ -402,9 +426,9 @@ public class TransferController {
         }
     }
 
-    // ============================================================
+    
     // 4. TRANSFERT MOBILE MONEY (Téléphone Orabank → Téléphone) - 10% frais
-    // ============================================================
+    
     @PostMapping("/mobile-money/from-phone")
     @PreAuthorize("hasAnyRole('USER', 'ADMIN')")
     @Transactional
@@ -475,7 +499,7 @@ public class TransferController {
                     transactionRepository.save(feesTransaction);
                 }
 
-                // ✅ LOG DE SUCCÈS
+                //  LOG DE SUCCÈS
                 loggingService.logTransaction(
                         "MOBILE_MONEY_FROM_PHONE", "DEBIT_MOBILE_MONEY", amount,
                         null, null,
@@ -492,7 +516,7 @@ public class TransferController {
                 response.put("sourcePhone", request.getSourcePhone());
                 response.put("recipientPhone", request.getRecipientPhone());
             } else {
-                // ✅ LOG D'ÉCHEC
+                //  LOG D'ÉCHEC
                 loggingService.logTransaction(
                         "MOBILE_MONEY_FROM_PHONE", "DEBIT_MOBILE_MONEY", amount,
                         null, null,
@@ -508,7 +532,7 @@ public class TransferController {
             return ResponseEntity.ok(response);
 
         } catch (Exception e) {
-            // ✅ LOG D'ÉCHEC
+            //  LOG D'ÉCHEC
             loggingService.logTransaction(
                     "MOBILE_MONEY_FROM_PHONE", "DEBIT_MOBILE_MONEY", amount,
                     null, null,
@@ -523,9 +547,9 @@ public class TransferController {
         }
     }
 
-    // ============================================================
+    
     // DTOs
-    // ============================================================
+    
 
     @Data
     public static class InternalTransferRequest {
@@ -538,6 +562,7 @@ public class TransferController {
     @Data
     public static class InternalFromPhoneRequest {
         private String sourcePhone;
+        private String sourceAccountNumber;  
         private String targetAccountNumber;
         private Double amount;
         private String description;
