@@ -15,28 +15,23 @@ import java.util.regex.Pattern;
 public class SmsParser {
 
     // ============================================================
-    // PATTERNS CORRIGÉS
+    // PATTERNS
     // ============================================================
-
-    // Accepte: SOLDE, SOLDE?, SOLDE COMPTEXXX, SOLDE? COMPTEXXX
-    // CORRECTION: \\? pour échapper le point d'interrogation
-    private static final Pattern BALANCE_PATTERN = Pattern.compile(
-            "^SOLDE\\??(?:\\s+\\w+)?$",
-            Pattern.CASE_INSENSITIVE
-    );
 
     private static final Pattern HISTORY_PATTERN = Pattern.compile("^HISTO(?:RIQUE)?$", Pattern.CASE_INSENSITIVE);
     private static final Pattern OTP_PATTERN = Pattern.compile("^OTP$", Pattern.CASE_INSENSITIVE);
-
     private static final Pattern TRANSFER_PATTERN = Pattern.compile(
             "^TRANSFER\\s+\\d+(?:\\s+\\w+)?(?:\\s+\\+?\\d+)?(?:\\s+MOBILE)?$",
             Pattern.CASE_INSENSITIVE
     );
-
     private static final Pattern HELP_PATTERN = Pattern.compile("^HELP$", Pattern.CASE_INSENSITIVE);
 
     /**
      * Parses the command type from the SMS message.
+     * Accepte: SOLDE, SOLDE?, SOLDE COMPTEXXX, SOLDE? COMPTEXXX
+     *
+     * @param message the SMS message content
+     * @return the identified command type
      */
     public CommandType parseCommand(String message) {
         if (message == null || message.trim().isEmpty()) {
@@ -44,30 +39,27 @@ public class SmsParser {
             return CommandType.UNKNOWN;
         }
 
-        String trimmedMessage = message.trim();
+        String trimmedMessage = message.trim().toUpperCase();
 
         // ============================================================
         // VÉRIFICATION SPÉCIFIQUE POUR SOLDE (plus robuste)
+        // Accepte: SOLDE, SOLDE?, SOLDE COMPTEXXX, SOLDE? COMPTEXXX
         // ============================================================
-        // Vérifier si le message commence par SOLDE (insensible à la casse)
-        // Cela gère: SOLDE, SOLDE?, SOLDE COMPTEXXX, SOLDE? COMPTEXXX
-        String upperMessage = trimmedMessage.toUpperCase();
-        if (upperMessage.startsWith("SOLDE")) {
+        if (trimmedMessage.startsWith("SOLDE")) {
             log.debug("Identified SOLDE command from: {}", trimmedMessage);
             return CommandType.SOLDE;
         }
 
-        // Vérifier les autres commandes
-        if (upperMessage.startsWith("HISTO")) {
+        if (trimmedMessage.startsWith("HISTO")) {
             log.debug("Identified HISTORY command");
             return CommandType.HISTO;
-        } else if (upperMessage.equals("OTP")) {
+        } else if (trimmedMessage.equals("OTP")) {
             log.debug("Identified OTP command");
             return CommandType.OTP;
-        } else if (upperMessage.startsWith("TRANSFER")) {
+        } else if (trimmedMessage.startsWith("TRANSFER")) {
             log.debug("Identified TRANSFER command");
             return CommandType.TRANSFER;
-        } else if (upperMessage.equals("HELP")) {
+        } else if (trimmedMessage.equals("HELP")) {
             log.debug("Identified HELP command");
             return CommandType.HELP;
         } else {
@@ -78,6 +70,9 @@ public class SmsParser {
 
     /**
      * Extracts the amount from a transfer command.
+     *
+     * @param message the transfer command message
+     * @return the extracted amount, or null if not found
      */
     public Long extractTransferAmount(String message) {
         if (message == null) {
@@ -101,6 +96,9 @@ public class SmsParser {
 
     /**
      * Extracts the recipient phone number from a transfer command.
+     *
+     * @param message the transfer command message
+     * @return the extracted recipient phone number, or null if not found
      */
     public String extractRecipientPhone(String message) {
         if (message == null) {
@@ -120,6 +118,9 @@ public class SmsParser {
 
     /**
      * Extracts the account number from a command.
+     *
+     * @param message the command message
+     * @return the extracted account number, or null if not found
      */
     public String extractAccountNumber(String message) {
         if (message == null) {
@@ -139,6 +140,9 @@ public class SmsParser {
 
     /**
      * Checks if a transfer command specifies MOBILE transfer type.
+     *
+     * @param message the transfer command message
+     * @return true if MOBILE is specified, false otherwise
      */
     public boolean isMobileTransfer(String message) {
         if (message == null) {

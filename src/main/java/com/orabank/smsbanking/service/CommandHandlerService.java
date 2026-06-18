@@ -63,7 +63,11 @@ public class CommandHandlerService {
         log.info("=== HANDLE COMMAND START ===");
         log.info("Command: {}, Phone: {}, RawMessage: {}", command, LoggingUtil.maskPhoneNumber(phoneNumber), rawMessage);
 
-        String result = switch (command.toUpperCase()) {
+        // Normaliser la commande pour enlever le ? si présent
+        String normalizedCommand = command.toUpperCase().replace("?", "");
+        log.info("Normalized command: {}", normalizedCommand);
+
+        String result = switch (normalizedCommand) {
             case "SOLDE" -> handleBalance(phoneNumber, rawMessage);
             case "HISTO" -> handleHistory(phoneNumber, rawMessage);
             case "OTP" -> handleOtp(phoneNumber);
@@ -105,7 +109,7 @@ public class CommandHandlerService {
 
             if (accounts.isEmpty()) {
                 log.warn("No accounts found for phone: {}", normalizedPhone);
-                return String.format("%s - Aucun compte trouvé pour ce client.", smsPrefix);
+                return String.format("%s - Aucun compte trouvé.", smsPrefix);
             }
 
             // Si un numéro de compte est spécifié
@@ -128,34 +132,29 @@ public class CommandHandlerService {
 
                 Account account = optionalAccount.get();
                 log.info("Balance found: {} for account {}", account.getBalance(), account.getAccountNumber());
-                return String.format("%s - Votre solde est de: %d FCFA (%s)",
-                        smsPrefix,
-                        account.getBalance().longValue(),
-                        account.getAccountNumber());
+
+                // ============================================================
+                // FORMAT SIMPLIFIÉ POUR UN COMPTE SPÉCIFIQUE
+                // ============================================================
+                return String.format("%s: %d FCFA",
+                        account.getAccountNumber(),
+                        account.getBalance().longValue());
             }
 
-            // Pas de numéro de compte spécifié
-            if (accounts.size() == 1) {
-                log.info("Single account found, returning balance");
-                return String.format("%s - Votre solde est de: %d FCFA",
-                        smsPrefix, accounts.get(0).getBalance().longValue());
-            }
-
-            // Plusieurs comptes - retourner la liste
-            log.info("Multiple accounts found ({})", accounts.size());
+            // ============================================================
+            // FORMAT SIMPLIFIÉ POUR LA LISTE DES COMPTES
+            // ============================================================
             StringBuilder sb = new StringBuilder();
-            sb.append(smsPrefix).append(" - Vos comptes:\n");
             for (Account account : accounts) {
                 sb.append(String.format("%s: %d FCFA\n",
                         account.getAccountNumber(),
                         account.getBalance().longValue()));
             }
-            sb.append("Exemple: SOLDE? COMPTEXXX");
             return sb.toString().trim();
 
         } catch (ClientNotFoundException e) {
             log.warn("Client non trouvé: {}", LoggingUtil.maskPhoneNumber(phoneNumber), e);
-            return String.format("%s - Client non trouvé. Veuillez contacter votre agence.", smsPrefix);
+            return String.format("%s - Client non trouvé.", smsPrefix);
         } catch (Exception e) {
             log.error("ERREUR DANS HANDLE BALANCE: {}", e.getMessage(), e);
             return String.format("%s - Erreur technique. Veuillez réessayer.", smsPrefix);
@@ -184,7 +183,7 @@ public class CommandHandlerService {
             List<Account> accounts = accountService.getAccountsByPhone(normalizedPhone);
 
             if (accounts.isEmpty()) {
-                return String.format("%s - Aucun compte trouvé pour ce client.", smsPrefix);
+                return String.format("%s - Aucun compte trouvé.", smsPrefix);
             }
 
             Account selectedAccount;
@@ -218,12 +217,13 @@ public class CommandHandlerService {
                     normalizedPhone, selectedAccount.getAccountNumber(), 5);
 
             if (transactions.isEmpty()) {
-                return String.format("%s - Aucune transaction récente sur le compte %s.",
+                return String.format("%s - Aucune transaction récente sur %s.",
                         smsPrefix, selectedAccount.getAccountNumber());
             }
 
             StringBuilder sb = new StringBuilder();
-            sb.append(smsPrefix).append(" - Dernieres transactions (").append(selectedAccount.getAccountNumber()).append("):\n");
+            sb.append(String.format("%s - Historique %s:\n",
+                    smsPrefix, selectedAccount.getAccountNumber()));
 
             for (Transaction t : transactions) {
                 sb.append(String.format("%s %s %d FCFA\n",
@@ -325,7 +325,7 @@ public class CommandHandlerService {
 
             List<Account> accounts = accountService.getAccountsByPhone(normalizedPhone);
             if (accounts.isEmpty()) {
-                return String.format("%s - Aucun compte trouvé pour ce client.", smsPrefix);
+                return String.format("%s - Aucun compte trouvé.", smsPrefix);
             }
 
             Account sourceAccount;
@@ -358,7 +358,7 @@ public class CommandHandlerService {
             if (sourceAccount.getBalance().compareTo(amount) < 0) {
                 log.warn("Solde insuffisant - Compte: {}, Solde: {}, Montant requis: {}",
                         sourceAccount.getAccountNumber(), sourceAccount.getBalance(), amount);
-                return String.format("%s - Solde insuffisant sur le compte %s. Solde actuel: %d FCFA.",
+                return String.format("%s - Solde insuffisant sur %s. Solde: %d FCFA.",
                         smsPrefix, sourceAccount.getAccountNumber(), sourceAccount.getBalance().longValue());
             }
 
@@ -379,7 +379,7 @@ public class CommandHandlerService {
                     log.warn("Virement Mobile Money échoué - Émetteur: {}, Compte: {}, Montant: {} FCFA",
                             LoggingUtil.maskPhoneNumber(normalizedPhone),
                             sourceAccount.getAccountNumber(), amount);
-                    return String.format("%s - Échec du virement vers Mobile Money depuis %s. Vérifiez votre solde.",
+                    return String.format("%s - Échec du virement vers Mobile Money depuis %s.",
                             smsPrefix, sourceAccount.getAccountNumber());
                 }
             } else {
@@ -391,7 +391,7 @@ public class CommandHandlerService {
                         LoggingUtil.maskPhoneNumber(recipientPhone),
                         amount);
 
-                return String.format("%s - Virement de %d FCFA vers %s effectué depuis %s.",
+                return String.format("%s - Virement %d FCFA vers %s effectué depuis %s.",
                         smsPrefix,
                         amount.longValue(),
                         LoggingUtil.maskPhoneNumber(recipientPhone),
@@ -400,14 +400,14 @@ public class CommandHandlerService {
 
         } catch (InsufficientBalanceException e) {
             log.warn("Solde insuffisant capturé - Émetteur: {}", LoggingUtil.maskPhoneNumber(phoneNumber));
-            return String.format("%s - Solde insuffisant. Votre solde actuel ne permet pas ce virement.", smsPrefix);
+            return String.format("%s - Solde insuffisant.", smsPrefix);
 
         } catch (NumberFormatException e) {
             return String.format("%s - Montant invalide. Exemple: TRANSFERT 1000 COMPTEXXX +22893360150", smsPrefix);
 
         } catch (ClientNotFoundException e) {
             log.warn("Client non trouvé lors du virement - Émetteur: {}", LoggingUtil.maskPhoneNumber(phoneNumber));
-            return String.format("%s - Client non trouvé. Vérifiez votre numéro de téléphone.", smsPrefix);
+            return String.format("%s - Client non trouvé.", smsPrefix);
 
         } catch (Exception e) {
             log.error("Erreur inattendue lors du virement pour {}", LoggingUtil.maskPhoneNumber(phoneNumber), e);
@@ -422,12 +422,10 @@ public class CommandHandlerService {
     private String handleHelp() {
         return smsPrefix + " - Commandes disponibles:\n" +
                 "SOLDE? - Consulter solde\n" +
-                "SOLDE? COMPTEXXX - Consulter solde d'un compte spécifique\n" +
-                "HISTO - 5 dernieres transactions\n" +
-                "HISTO COMPTEXXX - Historique d'un compte spécifique\n" +
+                "SOLDE? COMPTEXXX - Solde d'un compte spécifique\n" +
+                "HISTO COMPTEXXX - Historique d'un compte\n" +
                 "OTP - Generer code OTP\n" +
-                "TRANSFERT X - Virement (ex: TRANSFERT 1000 COMPTE002 +22893360150)\n" +
-                "TRANSFERT X COMPTEXXX - Virement depuis un compte spécifique\n" +
+                "TRANSFERT X COMPTEXXX +228... - Virement\n" +
                 "TRANSFERT X MOBILE - Virement Mobile Money\n" +
                 "HELP - Cette aide";
     }
@@ -438,7 +436,6 @@ public class CommandHandlerService {
 
     private String handleUnknownCommand(String command) {
         log.warn("Commande inconnue: {}", command);
-        return String.format("%s - Commande inconnue. Tapez HELP pour la liste des commandes.",
-                smsPrefix);
+        return String.format("%s - Commande inconnue. Tapez HELP.", smsPrefix);
     }
 }
