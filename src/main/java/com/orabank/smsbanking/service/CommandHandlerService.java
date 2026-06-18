@@ -133,17 +133,12 @@ public class CommandHandlerService {
                 Account account = optionalAccount.get();
                 log.info("Balance found: {} for account {}", account.getBalance(), account.getAccountNumber());
 
-                // ============================================================
-                // FORMAT SIMPLIFIÉ POUR UN COMPTE SPÉCIFIQUE
-                // ============================================================
                 return String.format("%s: %d FCFA",
                         account.getAccountNumber(),
                         account.getBalance().longValue());
             }
 
-            // ============================================================
-            // FORMAT SIMPLIFIÉ POUR LA LISTE DES COMPTES
-            // ============================================================
+            // Format simplifié pour la liste des comptes
             StringBuilder sb = new StringBuilder();
             for (Account account : accounts) {
                 sb.append(String.format("%s: %d FCFA\n",
@@ -286,21 +281,21 @@ public class CommandHandlerService {
 
             String trimmedMessage = rawMessage.trim();
             if (trimmedMessage.equalsIgnoreCase("TRANSFER")) {
-                return String.format("%s - Format invalide. Exemple: TRANSFERT 1000 COMPTEXXX +22893360150", smsPrefix);
+                return String.format("%s - Format invalide. Exemple: TRANSFERT 1000 COMPTEXXX +22893360150 COMPTEYYY", smsPrefix);
             }
 
             Matcher transferMatcher = TRANSFER_PATTERN.matcher(trimmedMessage);
-            String accountNumber = null;
+            String sourceAccountNumber = null;
             boolean isMobileMoney = false;
 
             if (transferMatcher.matches()) {
-                accountNumber = transferMatcher.group(2);
+                sourceAccountNumber = transferMatcher.group(2);
                 isMobileMoney = "MOBILE".equalsIgnoreCase(transferMatcher.group(3));
             }
 
             Long amountLong = smsParser.extractTransferAmount(rawMessage);
             if (amountLong == null || amountLong == 0) {
-                return String.format("%s - Montant invalide. Exemple: TRANSFERT 1000 COMPTEXXX +22893360150", smsPrefix);
+                return String.format("%s - Montant invalide. Exemple: TRANSFERT 1000 COMPTEXXX +22893360150 COMPTEYYY", smsPrefix);
             }
 
             if (amountLong < 0) {
@@ -311,7 +306,7 @@ public class CommandHandlerService {
 
             String recipientPhoneRaw = smsParser.extractRecipientPhone(rawMessage);
             if (recipientPhoneRaw == null) {
-                return String.format("%s - Numéro du destinataire manquant. Exemple: TRANSFERT 1000 COMPTEXXX +22893360150", smsPrefix);
+                return String.format("%s - Numéro du destinataire manquant. Exemple: TRANSFERT 1000 COMPTEXXX +22893360150 COMPTEYYY", smsPrefix);
             }
 
             String recipientPhone = normalizePhoneNumber(recipientPhoneRaw);
@@ -319,21 +314,27 @@ public class CommandHandlerService {
                 return String.format("%s - Numéro du destinataire invalide. Format attendu: +228XXXXXXXX", smsPrefix);
             }
 
+            // 🔒 Extraire le compte destinataire (optionnel)
+            String recipientAccountNumber = smsParser.extractAccountNumber(rawMessage);
+            log.info("Compte destinataire extrait: {}", recipientAccountNumber);
+
             if (normalizedPhone.equals(recipientPhone)) {
                 return String.format("%s - Impossible de virer de l'argent vers votre propre compte.", smsPrefix);
             }
 
+            // 🔒 Récupérer les comptes du client émetteur
             List<Account> accounts = accountService.getAccountsByPhone(normalizedPhone);
             if (accounts.isEmpty()) {
                 return String.format("%s - Aucun compte trouvé.", smsPrefix);
             }
 
+            // 🔒 Sélectionner le compte source
             Account sourceAccount;
-            if (accountNumber != null && !accountNumber.isEmpty()) {
-                final String finalAccountNumber = accountNumber;
+            if (sourceAccountNumber != null && !sourceAccountNumber.isEmpty()) {
+                final String finalSourceAccountNumber = sourceAccountNumber;
 
                 sourceAccount = accounts.stream()
-                        .filter(a -> a.getAccountNumber().equalsIgnoreCase(finalAccountNumber))
+                        .filter(a -> a.getAccountNumber().equalsIgnoreCase(finalSourceAccountNumber))
                         .findFirst()
                         .orElse(null);
 
@@ -342,7 +343,7 @@ public class CommandHandlerService {
                             .map(Account::getAccountNumber)
                             .collect(Collectors.joining(", "));
                     return String.format("%s - Compte %s introuvable. Vos comptes: %s",
-                            smsPrefix, accountNumber, accountList);
+                            smsPrefix, sourceAccountNumber, accountList);
                 }
             } else {
                 if (accounts.size() > 1) {
@@ -355,6 +356,7 @@ public class CommandHandlerService {
                 sourceAccount = accounts.get(0);
             }
 
+            // 🔒 Vérifier le solde
             if (sourceAccount.getBalance().compareTo(amount) < 0) {
                 log.warn("Solde insuffisant - Compte: {}, Solde: {}, Montant requis: {}",
                         sourceAccount.getAccountNumber(), sourceAccount.getBalance(), amount);
@@ -383,12 +385,20 @@ public class CommandHandlerService {
                             smsPrefix, sourceAccount.getAccountNumber());
                 }
             } else {
-                accountService.transferFromAccount(sourceAccount, recipientPhone, amount, "Virement interne SMS");
+                // 🔒 APPEL DE LA NOUVELLE MÉTHODE AVEC VÉRIFICATION DU COMPTE DESTINATAIRE
+                accountService.transferFromAccountWithTargetAccount(
+                        sourceAccount,
+                        recipientPhone,
+                        recipientAccountNumber,
+                        amount,
+                        "Virement interne SMS"
+                );
 
-                log.info("Virement interne réussi - Émetteur: {}, Compte: {}, Bénéficiaire: {}, Montant: {} FCFA",
+                log.info("Virement interne réussi - Émetteur: {}, Compte source: {}, Bénéficiaire: {}, Compte destinataire: {}, Montant: {} FCFA",
                         LoggingUtil.maskPhoneNumber(normalizedPhone),
                         sourceAccount.getAccountNumber(),
                         LoggingUtil.maskPhoneNumber(recipientPhone),
+                        recipientAccountNumber != null ? recipientAccountNumber : "AUTO",
                         amount);
 
                 return String.format("%s - Virement %d FCFA vers %s effectué depuis %s.",
@@ -403,11 +413,15 @@ public class CommandHandlerService {
             return String.format("%s - Solde insuffisant.", smsPrefix);
 
         } catch (NumberFormatException e) {
-            return String.format("%s - Montant invalide. Exemple: TRANSFERT 1000 COMPTEXXX +22893360150", smsPrefix);
+            return String.format("%s - Montant invalide. Exemple: TRANSFERT 1000 COMPTEXXX +22893360150 COMPTEYYY", smsPrefix);
 
         } catch (ClientNotFoundException e) {
             log.warn("Client non trouvé lors du virement - Émetteur: {}", LoggingUtil.maskPhoneNumber(phoneNumber));
-            return String.format("%s - Client non trouvé.", smsPrefix);
+            return String.format("%s - %s", smsPrefix, e.getMessage());
+
+        } catch (IllegalArgumentException e) {
+            log.warn("Erreur de validation: {}", e.getMessage());
+            return String.format("%s - %s", smsPrefix, e.getMessage());
 
         } catch (Exception e) {
             log.error("Erreur inattendue lors du virement pour {}", LoggingUtil.maskPhoneNumber(phoneNumber), e);
@@ -425,7 +439,10 @@ public class CommandHandlerService {
                 "SOLDE? COMPTEXXX - Solde d'un compte spécifique\n" +
                 "HISTO COMPTEXXX - Historique d'un compte\n" +
                 "OTP - Generer code OTP\n" +
-                "TRANSFERT X COMPTEXXX +228... - Virement\n" +
+                "TRANSFERT X COMPTEXXX +228... COMPTEYYY - Virement avec compte source et destinataire\n" +
+                "TRANSFERT X +228... COMPTEYYY - Virement avec compte destinataire\n" +
+                "TRANSFERT X COMPTEXXX +228... - Virement avec compte source\n" +
+                "TRANSFERT X +228... - Virement simple\n" +
                 "TRANSFERT X MOBILE - Virement Mobile Money\n" +
                 "HELP - Cette aide";
     }

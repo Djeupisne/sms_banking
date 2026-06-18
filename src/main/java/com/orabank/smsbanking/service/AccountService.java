@@ -23,6 +23,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -645,6 +646,144 @@ public class AccountService {
                 sourceAccount.getAccountNumber(),
                 LoggingUtil.maskPhoneNumber(recipientPhoneNumber),
                 amount, fees);
+
+        return debitTransaction;
+    }
+
+    // ============================================================
+    // NOUVELLE MÉTHODE : TRANSFERT AVEC VÉRIFICATION DU COMPTE DESTINATAIRE
+    // ============================================================
+
+    /**
+     * Effectue un transfert depuis un compte source vers un compte destinataire spécifique
+     *
+     * @param sourceAccount le compte source (déjà vérifié)
+     * @param recipientPhoneNumber le numéro de téléphone du bénéficiaire
+     * @param recipientAccountNumber le numéro de compte du bénéficiaire (optionnel)
+     * @param amount le montant à transférer
+     * @param description la description du transfert
+     * @return la transaction effectuée
+     */
+    @Transactional
+    public Transaction transferFromAccountWithTargetAccount(Account sourceAccount,
+                                                            String recipientPhoneNumber,
+                                                            String recipientAccountNumber,
+                                                            BigDecimal amount,
+                                                            String description) {
+
+        BigDecimal fees = calculateInternalTransferFees(amount);
+        BigDecimal totalAmount = amount.add(fees);
+        String transactionReference = UUID.randomUUID().toString();
+
+        log.info("Virement depuis compte spécifique - Compte source: {}, Bénéficiaire: {}, Compte destinataire: {}, Montant: {} FCFA, Frais: {} FCFA",
+                sourceAccount.getAccountNumber(),
+                LoggingUtil.maskPhoneNumber(recipientPhoneNumber),
+                recipientAccountNumber != null ? recipientAccountNumber : "AUTO",
+                amount, fees);
+
+        // 🔒 VÉRIFICATION 1 : Vérifier le solde du compte source
+        if (sourceAccount.getBalance().compareTo(totalAmount) < 0) {
+            log.warn("Solde insuffisant sur compte {} - Solde: {} FCFA, Montant requis: {} FCFA",
+                    sourceAccount.getAccountNumber(), sourceAccount.getBalance(), totalAmount);
+            throw new InsufficientBalanceException(
+                    String.format("Solde insuffisant sur le compte %s. Solde: %d FCFA, Montant requis: %d FCFA",
+                            sourceAccount.getAccountNumber(),
+                            sourceAccount.getBalance().longValue(),
+                            totalAmount.longValue()));
+        }
+
+        // 🔒 VÉRIFICATION 2 : Vérifier que le bénéficiaire existe
+        Client recipientClient = clientRepository.findByPhoneNumber(recipientPhoneNumber)
+                .orElseThrow(() -> new ClientNotFoundException(
+                        "Client bénéficiaire non trouvé: " + LoggingUtil.maskPhoneNumber(recipientPhoneNumber)));
+
+        // 🔒 VÉRIFICATION 3 : Récupérer les comptes du bénéficiaire
+        List<Account> recipientAccounts = accountRepository.findAllByClientId(recipientClient.getId());
+        if (recipientAccounts.isEmpty()) {
+            throw new ClientNotFoundException("Aucun compte trouvé pour le bénéficiaire");
+        }
+
+        // 🔒 VÉRIFICATION 4 : Sélectionner le compte destinataire
+        Account recipientAccount;
+        if (recipientAccountNumber != null && !recipientAccountNumber.isEmpty()) {
+            // 🔒 VÉRIFICATION : Le compte spécifié appartient-il au bénéficiaire ?
+            recipientAccount = recipientAccounts.stream()
+                    .filter(a -> a.getAccountNumber().equalsIgnoreCase(recipientAccountNumber))
+                    .findFirst()
+                    .orElseThrow(() -> new ClientNotFoundException(
+                            String.format("Le compte %s n'appartient pas au bénéficiaire %s",
+                                    recipientAccountNumber,
+                                    LoggingUtil.maskPhoneNumber(recipientPhoneNumber))));
+            log.info("Compte destinataire spécifié trouvé: {}", recipientAccount.getAccountNumber());
+        } else {
+            // 🔒 VÉRIFICATION : Si aucun compte spécifié, utiliser le premier compte actif
+            if (recipientAccounts.size() == 1) {
+                recipientAccount = recipientAccounts.get(0);
+                log.info("Un seul compte destinataire trouvé: {}", recipientAccount.getAccountNumber());
+            } else {
+                // 🔒 SÉCURITÉ : Plusieurs comptes mais aucun spécifié → Demander au client
+                String accountList = recipientAccounts.stream()
+                        .map(Account::getAccountNumber)
+                        .collect(Collectors.joining(", "));
+                throw new ClientNotFoundException(
+                        String.format("Bénéficiaire a plusieurs comptes. Veuillez spécifier le compte: %s",
+                                accountList));
+            }
+        }
+
+        // 🔒 VÉRIFICATION 5 : Empêcher le transfert vers soi-même
+        if (sourceAccount.getClientId().equals(recipientAccount.getClientId())) {
+            throw new IllegalArgumentException("Impossible de transférer vers votre propre compte");
+        }
+
+        // 1. 🔒 DEBIT : Débiter l'émetteur
+        sourceAccount.setBalance(sourceAccount.getBalance().subtract(totalAmount));
+        accountRepository.save(sourceAccount);
+
+        Transaction debitTransaction = new Transaction();
+        debitTransaction.setAccountId(sourceAccount.getId());
+        debitTransaction.setAmount(totalAmount);
+        debitTransaction.setType("VIREMENT_INTERNE");
+        debitTransaction.setReference(transactionReference);
+        debitTransaction.setDescription(description + " - Virement vers " +
+                LoggingUtil.maskPhoneNumber(recipientPhoneNumber) +
+                " (" + recipientAccount.getAccountNumber() + ") depuis " +
+                sourceAccount.getAccountNumber());
+        debitTransaction.setStatus(TransactionStatus.COMPLETED);
+        debitTransaction.setCreatedAt(LocalDateTime.now());
+        transactionRepository.save(debitTransaction);
+
+        log.info("Débit virement interne - Compte: {}, Montant: {} FCFA, Réf: {}, Nouveau solde: {} FCFA",
+                sourceAccount.getAccountNumber(), totalAmount, transactionReference, sourceAccount.getBalance());
+
+        // 2. 🔒 CREDIT : Créditer le bénéficiaire
+        recipientAccount.setBalance(recipientAccount.getBalance().add(amount));
+        accountRepository.save(recipientAccount);
+
+        Transaction creditTransaction = new Transaction();
+        creditTransaction.setAccountId(recipientAccount.getId());
+        creditTransaction.setAmount(amount);
+        creditTransaction.setType("VIREMENT_INTERNE");
+        creditTransaction.setReference(transactionReference);
+        creditTransaction.setDescription(description + " - Reçu de " +
+                LoggingUtil.maskPhoneNumber(recipientPhoneNumber) +
+                " (" + sourceAccount.getAccountNumber() + ")");
+        creditTransaction.setStatus(TransactionStatus.COMPLETED);
+        creditTransaction.setCreatedAt(LocalDateTime.now());
+        transactionRepository.save(creditTransaction);
+
+        log.info("Crédit virement interne - Compte: {}, Montant: {} FCFA, Réf: {}, Nouveau solde: {} FCFA",
+                recipientAccount.getAccountNumber(), amount, transactionReference, recipientAccount.getBalance());
+
+        // 3. 🔒 FRAIS : Créditer le compte de frais si nécessaire
+        if (fees.compareTo(BigDecimal.ZERO) > 0) {
+            creditInternalTransferFeesAccount(fees, transactionReference, amount);
+        }
+
+        log.info("Virement interne effectué - Compte source: {}, Compte destinataire: {}, Montant: {} FCFA, Frais: {} FCFA, Réf: {}",
+                sourceAccount.getAccountNumber(),
+                recipientAccount.getAccountNumber(),
+                amount, fees, transactionReference);
 
         return debitTransaction;
     }

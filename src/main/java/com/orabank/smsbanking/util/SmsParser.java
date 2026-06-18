@@ -21,7 +21,7 @@ public class SmsParser {
     private static final Pattern HISTORY_PATTERN = Pattern.compile("^HISTO(?:RIQUE)?$", Pattern.CASE_INSENSITIVE);
     private static final Pattern OTP_PATTERN = Pattern.compile("^OTP$", Pattern.CASE_INSENSITIVE);
     private static final Pattern TRANSFER_PATTERN = Pattern.compile(
-            "^TRANSFER\\s+\\d+(?:\\s+\\w+)?(?:\\s+\\+?\\d+)?(?:\\s+MOBILE)?$",
+            "^TRANSFER\\s+\\d+(?:\\s+\\w+)?(?:\\s+\\+?\\d+)?(?:\\s+\\w+)?(?:\\s+MOBILE)?$",
             Pattern.CASE_INSENSITIVE
     );
     private static final Pattern HELP_PATTERN = Pattern.compile("^HELP$", Pattern.CASE_INSENSITIVE);
@@ -132,6 +132,46 @@ public class SmsParser {
         for (String part : parts) {
             if (part.matches("^COMPTE\\d+$")) {
                 return part;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Extracts the target account number from a transfer command.
+     * (the account number after the phone number)
+     *
+     * @param message the transfer command message
+     * @return the extracted target account number, or null if not found
+     */
+    public String extractTargetAccountNumber(String message) {
+        if (message == null) {
+            return null;
+        }
+
+        String[] parts = message.trim().split("\\s+");
+
+        // Format: TRANSFERT 50000 COMPTE002 +22890000003 COMPTE003
+        // Ou: TRANSFERT 50000 +22890000003 COMPTE003
+        // Ou: TRANSFERT 50000 COMPTE002 +22890000003
+
+        int phoneIndex = -1;
+
+        // Trouver l'index du numéro de téléphone
+        for (int i = 0; i < parts.length; i++) {
+            if (parts[i].matches("^\\+?\\d{8,15}$")) {
+                phoneIndex = i;
+                break;
+            }
+        }
+
+        // Chercher un compte après le numéro de téléphone
+        if (phoneIndex != -1) {
+            for (int i = phoneIndex + 1; i < parts.length; i++) {
+                if (parts[i].matches("^COMPTE\\d+$")) {
+                    return parts[i];
+                }
             }
         }
 
