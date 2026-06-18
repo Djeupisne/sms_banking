@@ -281,7 +281,7 @@ public class CommandHandlerService {
 
             String trimmedMessage = rawMessage.trim();
             if (trimmedMessage.equalsIgnoreCase("TRANSFER")) {
-                return String.format("%s - Format invalide. Exemple: TRANSFERT 1000 COMPTEXXX +22893360150 COMPTEYYY", smsPrefix);
+                return String.format("%s - Format invalide. Exemple: TRANSFERT 50000 COMPTE002 +22890000003 COMPTE003", smsPrefix);
             }
 
             Matcher transferMatcher = TRANSFER_PATTERN.matcher(trimmedMessage);
@@ -295,7 +295,7 @@ public class CommandHandlerService {
 
             Long amountLong = smsParser.extractTransferAmount(rawMessage);
             if (amountLong == null || amountLong == 0) {
-                return String.format("%s - Montant invalide. Exemple: TRANSFERT 1000 COMPTEXXX +22893360150 COMPTEYYY", smsPrefix);
+                return String.format("%s - Montant invalide. Exemple: TRANSFERT 50000 COMPTE002 +22890000003 COMPTE003", smsPrefix);
             }
 
             if (amountLong < 0) {
@@ -306,7 +306,7 @@ public class CommandHandlerService {
 
             String recipientPhoneRaw = smsParser.extractRecipientPhone(rawMessage);
             if (recipientPhoneRaw == null) {
-                return String.format("%s - Numéro du destinataire manquant. Exemple: TRANSFERT 1000 COMPTEXXX +22893360150 COMPTEYYY", smsPrefix);
+                return String.format("%s - Numéro du destinataire manquant. Exemple: TRANSFERT 50000 COMPTE002 +22890000003 COMPTE003", smsPrefix);
             }
 
             String recipientPhone = normalizePhoneNumber(recipientPhoneRaw);
@@ -314,8 +314,8 @@ public class CommandHandlerService {
                 return String.format("%s - Numéro du destinataire invalide. Format attendu: +228XXXXXXXX", smsPrefix);
             }
 
-            // 🔒 Extraire le compte destinataire (optionnel)
-            String recipientAccountNumber = smsParser.extractAccountNumber(rawMessage);
+            // 🔒 EXTRAIRE LE COMPTE DESTINATAIRE (après le numéro de téléphone)
+            String recipientAccountNumber = smsParser.extractTargetAccountNumber(rawMessage);
             log.info("Compte destinataire extrait: {}", recipientAccountNumber);
 
             if (normalizedPhone.equals(recipientPhone)) {
@@ -413,7 +413,7 @@ public class CommandHandlerService {
             return String.format("%s - Solde insuffisant.", smsPrefix);
 
         } catch (NumberFormatException e) {
-            return String.format("%s - Montant invalide. Exemple: TRANSFERT 1000 COMPTEXXX +22893360150 COMPTEYYY", smsPrefix);
+            return String.format("%s - Montant invalide. Exemple: TRANSFERT 50000 COMPTE002 +22890000003 COMPTE003", smsPrefix);
 
         } catch (ClientNotFoundException e) {
             log.warn("Client non trouvé lors du virement - Émetteur: {}", LoggingUtil.maskPhoneNumber(phoneNumber));

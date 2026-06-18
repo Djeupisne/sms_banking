@@ -117,7 +117,8 @@ public class SmsParser {
     }
 
     /**
-     * Extracts the account number from a command.
+     * Extracts the source account number from a command.
+     * Pour les transferts, retourne le premier compte trouvé (compte source).
      *
      * @param message the command message
      * @return the extracted account number, or null if not found
@@ -140,7 +141,7 @@ public class SmsParser {
 
     /**
      * Extracts the target account number from a transfer command.
-     * (the account number after the phone number)
+     * Le compte destinataire est le compte après le numéro de téléphone.
      *
      * @param message the transfer command message
      * @return the extracted target account number, or null if not found
@@ -151,10 +152,6 @@ public class SmsParser {
         }
 
         String[] parts = message.trim().split("\\s+");
-
-        // Format: TRANSFERT 50000 COMPTE002 +22890000003 COMPTE003
-        // Ou: TRANSFERT 50000 +22890000003 COMPTE003
-        // Ou: TRANSFERT 50000 COMPTE002 +22890000003
 
         int phoneIndex = -1;
 
