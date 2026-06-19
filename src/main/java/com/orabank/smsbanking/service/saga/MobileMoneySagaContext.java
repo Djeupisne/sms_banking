@@ -6,6 +6,7 @@ import lombok.Data;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 @Data
@@ -29,6 +30,10 @@ public class MobileMoneySagaContext {
     private BigDecimal feesMin;
     private BigDecimal feesMax;
     private String debitTransactionId;
+
+    // ✅ NOUVEAU : Stocker le compte utilisé (pour logs et traçabilité)
+    private String usedAccountNumber;
+    private Long usedAccountId;
 
     // Montant maximum autorisé pour un transfert
     private static final BigDecimal MAX_TRANSFER_AMOUNT = new BigDecimal("500000");
