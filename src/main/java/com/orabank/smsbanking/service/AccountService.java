@@ -112,7 +112,6 @@ public class AccountService {
         }
 
         // Sinon, utiliser le premier compte actif (ou le compte avec le plus petit ID)
-        // On pourrait aussi utiliser le compte par défaut si on ajoute ce champ
         return accounts.stream()
                 .min((a1, a2) -> a1.getId().compareTo(a2.getId()))
                 .orElse(accounts.get(0));
@@ -265,11 +264,106 @@ public class AccountService {
 
         Account account = getClientAccount(client, accountNumber);
 
+        // Utiliser la méthode avec limit dynamique
         List<Transaction> transactions = transactionRepository
-                .findTopByAccountIdOrderByCreatedAtDesc(account.getId());
+                .findTopByAccountIdOrderByCreatedAtDesc(account.getId(), limit);
 
-        // Limiter le nombre de transactions
-        return transactions.stream().limit(limit).collect(Collectors.toList());
+        log.info("Récupération historique - Client: {}, Compte: {}, Limite: {}, Nombre transactions: {}",
+                LoggingUtil.maskPhoneNumber(phoneNumber),
+                account.getAccountNumber(),
+                limit,
+                transactions.size());
+
+        return transactions;
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW, readOnly = true)
+    public List<Transaction> getLastTransactionsByClientId(Long clientId, int limit) {
+        List<Transaction> transactions = transactionRepository
+                .findTopByClientIdOrderByCreatedAtDesc(clientId, limit);
+
+        log.info("Récupération historique par client - ClientId: {}, Nombre transactions: {}",
+                clientId, transactions.size());
+
+        return transactions;
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW, readOnly = true)
+    public List<Transaction> getTransactionsByAccountAndType(String phoneNumber, String accountNumber,
+                                                             String type, int limit) {
+        Client client = clientRepository.findByPhoneNumber(phoneNumber)
+                .orElseThrow(() -> new ClientNotFoundException(
+                        "Client non trouvé pour le numéro: " + LoggingUtil.maskPhoneNumber(phoneNumber)));
+
+        Account account = getClientAccount(client, accountNumber);
+
+        List<Transaction> transactions = transactionRepository
+                .findTopByAccountIdAndTypeOrderByCreatedAtDesc(account.getId(), type, limit);
+
+        log.info("Récupération transactions par type - Client: {}, Compte: {}, Type: {}, Nombre: {}",
+                LoggingUtil.maskPhoneNumber(phoneNumber),
+                account.getAccountNumber(),
+                type,
+                transactions.size());
+
+        return transactions;
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW, readOnly = true)
+    public List<Transaction> getTransactionsByDateRange(String phoneNumber, String accountNumber,
+                                                        LocalDateTime startDate,
+                                                        LocalDateTime endDate,
+                                                        int limit) {
+        Client client = clientRepository.findByPhoneNumber(phoneNumber)
+                .orElseThrow(() -> new ClientNotFoundException(
+                        "Client non trouvé pour le numéro: " + LoggingUtil.maskPhoneNumber(phoneNumber)));
+
+        Account account = getClientAccount(client, accountNumber);
+
+        List<Transaction> transactions = transactionRepository
+                .findTransactionsByAccountIdAndDateRange(account.getId(), startDate, endDate, limit);
+
+        log.info("Récupération transactions par date - Client: {}, Compte: {}, Période: {} - {}, Nombre: {}",
+                LoggingUtil.maskPhoneNumber(phoneNumber),
+                account.getAccountNumber(),
+                startDate,
+                endDate,
+                transactions.size());
+
+        return transactions;
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW, readOnly = true)
+    public List<Transaction> getTransactionsWithPagination(String phoneNumber, String accountNumber,
+                                                           int limit, int offset) {
+        Client client = clientRepository.findByPhoneNumber(phoneNumber)
+                .orElseThrow(() -> new ClientNotFoundException(
+                        "Client non trouvé pour le numéro: " + LoggingUtil.maskPhoneNumber(phoneNumber)));
+
+        Account account = getClientAccount(client, accountNumber);
+
+        List<Transaction> transactions = transactionRepository
+                .findTransactionsByAccountIdWithPagination(account.getId(), limit, offset);
+
+        log.info("Récupération transactions paginées - Client: {}, Compte: {}, Limit: {}, Offset: {}, Nombre: {}",
+                LoggingUtil.maskPhoneNumber(phoneNumber),
+                account.getAccountNumber(),
+                limit,
+                offset,
+                transactions.size());
+
+        return transactions;
+    }
+
+    @Transactional(readOnly = true)
+    public long getTransactionCount(String phoneNumber, String accountNumber) {
+        Client client = clientRepository.findByPhoneNumber(phoneNumber)
+                .orElseThrow(() -> new ClientNotFoundException(
+                        "Client non trouvé pour le numéro: " + LoggingUtil.maskPhoneNumber(phoneNumber)));
+
+        Account account = getClientAccount(client, accountNumber);
+
+        return transactionRepository.countByAccountId(account.getId());
     }
 
     @Transactional
