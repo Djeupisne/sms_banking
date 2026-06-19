@@ -20,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 
 @Slf4j
 @Component
@@ -46,7 +47,7 @@ public class MobileMoneySagaOrchestrator {
     private boolean feesEnabled;
 
     // ============================================================
-    // ✅ MÉTHODE UTILITAIRE : GESTION MULTI-COMPTES
+    // MÉTHODE UTILITAIRE : GESTION MULTI-COMPTES
     // ============================================================
 
     /**
@@ -68,8 +69,7 @@ public class MobileMoneySagaOrchestrator {
             return accounts.get(0);
         }
 
-        // ✅ Plusieurs comptes : utiliser le compte avec l'ID le plus petit (le plus ancien)
-        // On pourrait aussi permettre à l'utilisateur de choisir
+        // Plusieurs comptes : utiliser le compte avec l'ID le plus petit (le plus ancien)
         Account defaultAccount = accounts.stream()
                 .min((a1, a2) -> a1.getId().compareTo(a2.getId()))
                 .orElse(accounts.get(0));
@@ -79,6 +79,10 @@ public class MobileMoneySagaOrchestrator {
 
         return defaultAccount;
     }
+
+    // ============================================================
+    // MÉTHODE PRINCIPALE : EXECUTION DE LA SAGA
+    // ============================================================
 
     public MobileMoneySagaContext execute(MobileMoneySagaContext context) {
         log.info("Démarrage Saga Mobile Money - sagaId: {}, phone: {}, amount: {}",
@@ -103,11 +107,17 @@ public class MobileMoneySagaOrchestrator {
                 context.setTotalAmount(context.getAmount());
             }
 
+            // ÉTAPE 1 : Débit du compte (avec vérification idempotence)
             context = debitAccount(context);
-            if (context.getState() == SagaState.FAILED_BEFORE_COMPENSATION) return context;
+            if (context.getState() == SagaState.FAILED_BEFORE_COMPENSATION) {
+                log.warn("Échec du débit - sagaId: {}", context.getSagaId());
+                return context;
+            }
 
+            // ÉTAPE 2 : Transfert Mobile Money
             context = transferToMobileMoney(context);
 
+            // ÉTAPE 3 : Si succès, créditer les frais
             if (context.getState() == SagaState.COMPLETED) {
                 if (feesEnabled && context.getFees().compareTo(BigDecimal.ZERO) > 0) {
                     context = creditFeesAccount(context);
@@ -115,9 +125,12 @@ public class MobileMoneySagaOrchestrator {
                 if (context.getState() == SagaState.COMPLETED) {
                     updateDebitTransactionStatus(context.getSagaId(), TransactionStatus.COMPLETED);
                 }
-            } else if (context.getState() == SagaState.COMPENSATING) {
+            }
+            // ÉTAPE 4 : Si échec, compenser
+            else if (context.getState() == SagaState.COMPENSATING) {
                 context = compensate(context);
             }
+
         } catch (Exception e) {
             log.error("Erreur inattendue dans la Saga - sagaId: {}", context.getSagaId(), e);
             context.fail("Erreur inattendue: " + e.getMessage());
@@ -125,28 +138,55 @@ public class MobileMoneySagaOrchestrator {
                 context = compensate(context);
             }
         }
+
+        log.info("Fin Saga - sagaId: {}, état: {}", context.getSagaId(), context.getState());
         return context;
     }
 
     // ============================================================
-    // ✅ MÉTHODE DEBIT ACCOUNT CORRIGÉE
+    // ÉTAPE 1 : DÉBIT DU COMPTE (AVEC VÉRIFICATION IDEMPOTENCE)
     // ============================================================
 
     @Transactional
     public MobileMoneySagaContext debitAccount(MobileMoneySagaContext context) {
         try {
+            // ✅ VÉRIFICATION IDEMPOTENCE : Éviter les doubles débits
+            List<Transaction> existingTransactions = transactionRepository.findByReference(context.getSagaId());
+
+            boolean alreadyDebited = existingTransactions.stream()
+                    .anyMatch(t -> "DEBIT_MOBILE_MONEY".equals(t.getType())
+                            && t.getStatus() == TransactionStatus.PENDING);
+
+            if (alreadyDebited) {
+                log.warn("⚠️ Transaction déjà débitée pour cette saga - SagaId: {}, TransactionId: {}",
+                        context.getSagaId(),
+                        existingTransactions.stream()
+                                .filter(t -> "DEBIT_MOBILE_MONEY".equals(t.getType()))
+                                .findFirst()
+                                .map(Transaction::getTransactionId)
+                                .orElse("unknown"));
+                context.setState(SagaState.ACCOUNT_DEBITED);
+                return context;
+            }
+
+            // Récupérer le client
             Client client = clientRepository.findByPhoneNumber(context.getPhoneNumber())
                     .orElseThrow(() -> new IllegalArgumentException("Client non trouvé"));
 
-            // ✅ Utiliser la nouvelle méthode avec gestion multi-comptes
+            // Récupérer le compte (gestion multi-comptes)
             Account account = getClientAccount(client);
             if (account == null) {
                 throw new IllegalArgumentException("Aucun compte actif trouvé pour ce client");
             }
 
-            log.info("Compte sélectionné pour le débit - Account: {}, Solde: {} FCFA, Total à débiter: {} FCFA",
-                    account.getAccountNumber(), account.getBalance(), context.getTotalAmount());
+            // Stocker le compte utilisé dans le contexte pour traçabilité
+            context.setUsedAccountId(account.getId());
+            context.setUsedAccountNumber(account.getAccountNumber());
 
+            log.info("Compte sélectionné pour le débit - Account: {}, Solde: {} FCFA, Total à débiter: {} FCFA, SagaId: {}",
+                    account.getAccountNumber(), account.getBalance(), context.getTotalAmount(), context.getSagaId());
+
+            // Vérifier le solde
             if (account.getBalance().compareTo(context.getTotalAmount()) < 0) {
                 context.fail("Solde insuffisant sur le compte " + account.getAccountNumber() +
                         ". Requis: " + context.getTotalAmount() + " FCFA, Solde: " + account.getBalance() + " FCFA");
@@ -154,10 +194,14 @@ public class MobileMoneySagaOrchestrator {
                 return context;
             }
 
+            // Débiter le compte
             account.setBalance(account.getBalance().subtract(context.getTotalAmount()));
             accountRepository.save(account);
 
+            // ✅ Enregistrer la transaction une seule fois avec un ID unique
+            String transactionId = UUID.randomUUID().toString();
             Transaction debitTransaction = new Transaction();
+            debitTransaction.setTransactionId(transactionId);
             debitTransaction.setAccountId(account.getId());
             debitTransaction.setAmount(context.getTotalAmount());
             debitTransaction.setType("DEBIT_MOBILE_MONEY");
@@ -176,25 +220,36 @@ public class MobileMoneySagaOrchestrator {
             context.setDebitTransactionId(debitTransaction.getTransactionId());
             context.setState(SagaState.ACCOUNT_DEBITED);
 
-            log.info("✅ Débit réussi - Account: {}, Nouveau solde: {} FCFA, SagaId: {}",
-                    account.getAccountNumber(), account.getBalance(), context.getSagaId());
+            log.info("✅ Débit réussi - Account: {}, Nouveau solde: {} FCFA, TransactionId: {}, SagaId: {}",
+                    account.getAccountNumber(), account.getBalance(),
+                    debitTransaction.getTransactionId(), context.getSagaId());
 
         } catch (Exception e) {
-            log.error("Échec du débit - sagaId: {}", context.getSagaId(), e);
+            log.error("❌ Échec du débit - sagaId: {}", context.getSagaId(), e);
             context.fail("Échec du débit: " + e.getMessage());
             context.setState(SagaState.FAILED_BEFORE_COMPENSATION);
         }
         return context;
     }
 
+    // ============================================================
+    // ÉTAPE 2 : TRANSFERT MOBILE MONEY (AVEC CIRCUIT BREAKER)
+    // ============================================================
+
     @CircuitBreaker(name = "coreBankingApi", fallbackMethod = "transferToMobileMoneyFallback")
     @Retry(name = "coreBankingApi", fallbackMethod = "transferToMobileMoneyFallback")
     public MobileMoneySagaContext transferToMobileMoney(MobileMoneySagaContext context) {
         try {
+            log.info("Appel API Core Banking - SagaId: {}, Phone: {}, Amount: {}",
+                    context.getSagaId(),
+                    LoggingUtil.maskPhoneNumber(context.getPhoneNumber()),
+                    context.getAmount());
+
             boolean success = coreBankingApiClient.transferToMobileMoney(
                     context.getPhoneNumber(),
                     context.getAmount().longValueExact()
             );
+
             if (success) {
                 context.setState(SagaState.MOBILE_MONEY_TRANSFERRED);
                 context.complete();
@@ -202,25 +257,55 @@ public class MobileMoneySagaOrchestrator {
             } else {
                 log.warn("Transfert Mobile Money échoué - SagaId: {}", context.getSagaId());
                 context.setState(SagaState.COMPENSATING);
+                context.setErrorMessage("Échec du transfert Mobile Money via API Core Banking");
             }
         } catch (Exception e) {
             log.error("Erreur lors du transfert Mobile Money - sagaId: {}", context.getSagaId(), e);
             context.setState(SagaState.COMPENSATING);
+            context.setErrorMessage("Erreur technique lors du transfert: " + e.getMessage());
         }
         return context;
     }
 
+    public MobileMoneySagaContext transferToMobileMoneyFallback(MobileMoneySagaContext context, Throwable t) {
+        context.setErrorMessage("Échec du transfert (circuit breaker): " + t.getMessage());
+        context.setState(SagaState.COMPENSATING);
+        log.warn("Fallback activé - SagaId: {}, Error: {}", context.getSagaId(), t.getMessage());
+        return context;
+    }
+
+    // ============================================================
+    // ÉTAPE 3 : CRÉDIT DES FRAIS (AVEC VÉRIFICATION IDEMPOTENCE)
+    // ============================================================
+
     @Transactional
     public MobileMoneySagaContext creditFeesAccount(MobileMoneySagaContext context) {
         try {
+            // ✅ VÉRIFICATION IDEMPOTENCE : Ne pas créditer les frais deux fois
+            List<Transaction> existingFees = transactionRepository.findByReference(context.getSagaId());
+            boolean feesAlreadyCredited = existingFees.stream()
+                    .anyMatch(t -> "CREDIT_FEES".equals(t.getType())
+                            && t.getStatus() == TransactionStatus.COMPLETED);
+
+            if (feesAlreadyCredited) {
+                log.warn("⚠️ Frais déjà crédités pour cette saga - SagaId: {}", context.getSagaId());
+                context.complete();
+                return context;
+            }
+
+            // Récupérer le compte de frais
             Account feesAccount = accountRepository.findByAccountNumber("FEE_MOBILE_MONEY_001")
                     .orElseThrow(() -> new IllegalStateException(
                             "Compte de frais Mobile Money (FEE_MOBILE_MONEY_001) non trouvé en base !"));
 
+            // Créditer le compte de frais
             feesAccount.setBalance(feesAccount.getBalance().add(context.getFees()));
             accountRepository.save(feesAccount);
 
+            // ✅ Enregistrer la transaction de frais
+            String feesTransactionId = UUID.randomUUID().toString();
             Transaction feesTransaction = new Transaction();
+            feesTransaction.setTransactionId(feesTransactionId);
             feesTransaction.setAccountId(feesAccount.getId());
             feesTransaction.setAmount(context.getFees());
             feesTransaction.setType("CREDIT_FEES");
@@ -235,26 +320,19 @@ public class MobileMoneySagaOrchestrator {
             transactionRepository.save(feesTransaction);
 
             context.complete();
-            log.info("✅ Compte de frais crédité - sagaId: {}, montant: {} FCFA",
-                    context.getSagaId(), context.getFees());
+            log.info("✅ Compte de frais crédité - sagaId: {}, montant: {} FCFA, TransactionId: {}",
+                    context.getSagaId(), context.getFees(), feesTransactionId);
 
         } catch (Exception e) {
-            log.error("Échec du crédit des frais - sagaId: {}", context.getSagaId(), e);
+            log.error("❌ Échec du crédit des frais - sagaId: {}", context.getSagaId(), e);
             context.setErrorMessage("Échec du crédit des frais: " + e.getMessage());
             context.setState(SagaState.COMPENSATING);
         }
         return context;
     }
 
-    public MobileMoneySagaContext transferToMobileMoneyFallback(MobileMoneySagaContext context, Throwable t) {
-        context.setErrorMessage("Échec du transfert (circuit breaker): " + t.getMessage());
-        context.setState(SagaState.COMPENSATING);
-        log.warn("Fallback activé - SagaId: {}, Error: {}", context.getSagaId(), t.getMessage());
-        return context;
-    }
-
     // ============================================================
-    // ✅ MÉTHODE COMPENSATE CORRIGÉE
+    // ÉTAPE 4 : COMPENSATION (AVEC VÉRIFICATION IDEMPOTENCE)
     // ============================================================
 
     @Transactional
@@ -263,24 +341,43 @@ public class MobileMoneySagaOrchestrator {
         context.setState(SagaState.COMPENSATING);
 
         try {
+            // ✅ VÉRIFICATION IDEMPOTENCE : Ne pas compenser deux fois
+            List<Transaction> existingCompensations = transactionRepository.findByReference(context.getSagaId());
+            boolean alreadyCompensated = existingCompensations.stream()
+                    .anyMatch(t -> "CREDIT_COMPENSATION".equals(t.getType())
+                            && t.getStatus() == TransactionStatus.COMPLETED);
+
+            if (alreadyCompensated) {
+                log.warn("⚠️ Déjà compensé pour cette saga - SagaId: {}", context.getSagaId());
+                context.setState(SagaState.COMPENSATED);
+                return context;
+            }
+
+            // Récupérer le client
             Client client = clientRepository.findByPhoneNumber(context.getPhoneNumber())
                     .orElseThrow(() -> new IllegalArgumentException("Client non trouvé pour compensation"));
 
-            // ✅ Utiliser la même logique multi-comptes pour la compensation
+            // Récupérer le compte (gestion multi-comptes)
             Account account = getClientAccount(client);
             if (account == null) {
                 throw new IllegalArgumentException("Aucun compte actif trouvé pour la compensation");
             }
 
-            log.info("Compensation - Account: {}, Montant: {} FCFA, SagaId: {}",
-                    account.getAccountNumber(), context.getTotalAmount(), context.getSagaId());
+            log.info("Compensation - Account: {}, Montant: {} FCFA, SagaId: {}, Tentative: {}",
+                    account.getAccountNumber(), context.getTotalAmount(),
+                    context.getSagaId(), context.getCompensationAttempts());
 
+            // Créditer le compte (remboursement)
             account.setBalance(account.getBalance().add(context.getTotalAmount()));
             accountRepository.save(account);
 
+            // Mettre à jour le statut de la transaction de débit
             updateDebitTransactionStatus(context.getSagaId(), TransactionStatus.FAILED);
 
+            // ✅ Enregistrer la transaction de compensation
+            String compensationId = UUID.randomUUID().toString();
             Transaction compensationTx = new Transaction();
+            compensationTx.setTransactionId(compensationId);
             compensationTx.setAccountId(account.getId());
             compensationTx.setAmount(context.getTotalAmount());
             compensationTx.setType("CREDIT_COMPENSATION");
@@ -294,22 +391,36 @@ public class MobileMoneySagaOrchestrator {
             transactionRepository.save(compensationTx);
 
             context.setState(SagaState.COMPENSATED);
-            log.info("✅ Compensation réussie - Account: {}, Nouveau solde: {} FCFA, SagaId: {}",
-                    account.getAccountNumber(), account.getBalance(), context.getSagaId());
+            log.info("✅ Compensation réussie - Account: {}, Nouveau solde: {} FCFA, TransactionId: {}, SagaId: {}",
+                    account.getAccountNumber(), account.getBalance(), compensationId, context.getSagaId());
 
         } catch (Exception e) {
             log.error("❌ Échec de la compensation - sagaId: {}, tentative: {}",
                     context.getSagaId(), context.getCompensationAttempts(), e);
+
             if (context.getCompensationAttempts() >= 3) {
                 context.fail("Échec de compensation après 3 tentatives: " + e.getMessage());
                 context.setState(SagaState.COMPENSATION_FAILED);
+                log.error("🚨 INTERVENTION MANUELLE REQUISE - SagaId: {}", context.getSagaId());
+            } else {
+                // Réessayer plus tard
+                context.setErrorMessage("Échec de la compensation (tentative " + context.getCompensationAttempts() + "): " + e.getMessage());
             }
         }
         return context;
     }
 
+    // ============================================================
+    // MÉTHODES UTILITAIRES
+    // ============================================================
+
+    /**
+     * Met à jour le statut de la transaction de débit associée à une saga
+     */
     private void updateDebitTransactionStatus(String sagaId, TransactionStatus status) {
-        transactionRepository.findByReference(sagaId).stream()
+        List<Transaction> transactions = transactionRepository.findByReference(sagaId);
+
+        transactions.stream()
                 .filter(t -> "DEBIT_MOBILE_MONEY".equals(t.getType()))
                 .findFirst()
                 .ifPresent(t -> {
@@ -318,7 +429,48 @@ public class MobileMoneySagaOrchestrator {
                         t.setCompletedAt(LocalDateTime.now());
                     }
                     transactionRepository.save(t);
-                    log.info("Transaction mise à jour - Reference: {}, Status: {}", sagaId, status);
+                    log.info("Transaction mise à jour - Reference: {}, Status: {}, TransactionId: {}",
+                            sagaId, status, t.getTransactionId());
                 });
+    }
+
+    /**
+     * Vérifie si une saga a déjà été exécutée pour un client
+     */
+    public boolean isSagaAlreadyExecuted(String sagaId) {
+        return !transactionRepository.findByReference(sagaId).isEmpty();
+    }
+
+    /**
+     * Récupère le statut d'une saga
+     */
+    public SagaState getSagaState(String sagaId) {
+        List<Transaction> transactions = transactionRepository.findByReference(sagaId);
+        if (transactions.isEmpty()) {
+            return SagaState.NOT_FOUND;
+        }
+
+        // Vérifier si une transaction de compensation existe
+        boolean hasCompensation = transactions.stream()
+                .anyMatch(t -> "CREDIT_COMPENSATION".equals(t.getType()));
+        if (hasCompensation) {
+            return SagaState.COMPENSATED;
+        }
+
+        // Vérifier si une transaction de frais existe (succès)
+        boolean hasFees = transactions.stream()
+                .anyMatch(t -> "CREDIT_FEES".equals(t.getType()));
+        if (hasFees) {
+            return SagaState.COMPLETED;
+        }
+
+        // Vérifier si une transaction de débit existe
+        boolean hasDebit = transactions.stream()
+                .anyMatch(t -> "DEBIT_MOBILE_MONEY".equals(t.getType()));
+        if (hasDebit) {
+            return SagaState.ACCOUNT_DEBITED;
+        }
+
+        return SagaState.INITIATED;
     }
 }
