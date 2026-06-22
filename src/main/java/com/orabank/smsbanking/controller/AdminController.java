@@ -30,6 +30,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/admin")
@@ -64,7 +65,6 @@ public class AdminController {
                 transferRequest.getAmount(),
                 maskPhoneNumber(transferRequest.getRecipientPhone()));
 
-        //  Convertir BigDecimal en Double
         Double amount = transferRequest.getAmount().doubleValue();
         Double fees = Math.ceil(amount * 0.1);
         Double totalAmount = amount + fees;
@@ -155,7 +155,6 @@ public class AdminController {
                 maskAccountNumber(request.getTargetAccountNumber()),
                 request.getAmount());
 
-        //  Convertir BigDecimal en Double
         Double amount = request.getAmount().doubleValue();
         String transactionRef = UUID.randomUUID().toString();
 
@@ -243,7 +242,6 @@ public class AdminController {
         log.info("Demande de crédit manuel - Compte: {}, Montant: {}",
                 maskAccountNumber(request.getAccountNumber()), request.getAmount());
 
-        //  Convertir BigDecimal en Double
         Double amount = request.getAmount().doubleValue();
         String transactionRef = UUID.randomUUID().toString();
 
@@ -309,7 +307,6 @@ public class AdminController {
         log.info("Demande de débit manuel - Compte: {}, Montant: {}",
                 maskAccountNumber(request.getAccountNumber()), request.getAmount());
 
-        //  Convertir BigDecimal en Double
         Double amount = request.getAmount().doubleValue();
         String transactionRef = UUID.randomUUID().toString();
 
@@ -377,9 +374,10 @@ public class AdminController {
         }
     }
 
-    
-    //  NOUVEL ENDPOINT : Débit depuis téléphone
-    
+    // ============================================================
+    // ENDPOINT CORRIGÉ : Débit depuis téléphone avec gestion multi-comptes
+    // ============================================================
+
     @PostMapping("/accounts/debit-from-phone")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Map<String, Object>> debitFromPhone(@RequestBody DebitFromPhoneRequest request) {
@@ -403,19 +401,71 @@ public class AdminController {
             Client client = clientRepository.findByPhoneNumber(request.getPhoneNumber())
                     .orElseThrow(() -> new RuntimeException("Client non trouvé: " + request.getPhoneNumber()));
 
-            // Rechercher le compte du client
-            Account account = accountRepository.findByClientId(client.getId())
-                    .orElseThrow(() -> new RuntimeException("Compte non trouvé pour ce client"));
+            // ============================================================
+            // 🔒 GESTION MULTI-COMPTES : Récupérer tous les comptes du client
+            // ============================================================
+            List<Account> accounts = accountRepository.findAllByClientId(client.getId());
+
+            if (accounts.isEmpty()) {
+                loggingService.logTransaction("ADMIN_DEBIT_FROM_PHONE", "DEBIT_MANUEL", amount,
+                        null, null, request.getPhoneNumber(), null,
+                        request.getDescription(), transactionRef, "FAILED", "Aucun compte trouvé pour ce client", 0.0, amount, httpServletRequest);
+                return ResponseEntity.badRequest()
+                        .body(Map.of("success", false, "message", "Aucun compte trouvé pour ce client"));
+            }
+
+            // ============================================================
+            // 🔒 Sélectionner le compte (avec priorité au compte spécifié ou premier compte actif)
+            // ============================================================
+            Account account;
+
+            // Si un compte est spécifié dans la requête
+            if (request.getAccountNumber() != null && !request.getAccountNumber().isEmpty()) {
+                final String finalAccountNumber = request.getAccountNumber();
+                account = accounts.stream()
+                        .filter(a -> a.getAccountNumber().equalsIgnoreCase(finalAccountNumber))
+                        .findFirst()
+                        .orElseThrow(() -> new RuntimeException(
+                                String.format("Compte %s non trouvé pour ce client. Comptes disponibles: %s",
+                                        finalAccountNumber,
+                                        accounts.stream().map(Account::getAccountNumber).collect(Collectors.joining(", ")))));
+                log.info("Compte spécifié trouvé: {}", account.getAccountNumber());
+            } else if (accounts.size() == 1) {
+                // Un seul compte → l'utiliser
+                account = accounts.get(0);
+                log.info("Un seul compte trouvé: {}", account.getAccountNumber());
+            } else {
+                // Plusieurs comptes → l'utilisateur doit spécifier lequel
+                String accountList = accounts.stream()
+                        .map(Account::getAccountNumber)
+                        .collect(Collectors.joining(", "));
+                loggingService.logTransaction("ADMIN_DEBIT_FROM_PHONE", "DEBIT_MANUEL", amount,
+                        null, null, request.getPhoneNumber(), null,
+                        request.getDescription(), transactionRef, "FAILED",
+                        "Plusieurs comptes trouvés. Veuillez spécifier le compte: " + accountList,
+                        0.0, amount, httpServletRequest);
+                return ResponseEntity.badRequest()
+                        .body(Map.of(
+                                "success", false,
+                                "message", "Plusieurs comptes trouvés. Veuillez spécifier le compte.",
+                                "accounts", accounts.stream().map(Account::getAccountNumber).collect(Collectors.toList())
+                        ));
+            }
 
             BigDecimal amountBd = BigDecimal.valueOf(request.getAmount());
 
             // Vérifier le solde
             if (account.getBalance().compareTo(amountBd) < 0) {
                 loggingService.logTransaction("ADMIN_DEBIT_FROM_PHONE", "DEBIT_MANUEL", amount,
-                        null, null, request.getPhoneNumber(), null,
-                        request.getDescription(), transactionRef, "FAILED", "Solde insuffisant", 0.0, amount, httpServletRequest);
+                        account.getAccountNumber(), null, request.getPhoneNumber(), null,
+                        request.getDescription(), transactionRef, "FAILED",
+                        "Solde insuffisant sur le compte " + account.getAccountNumber(),
+                        0.0, amount, httpServletRequest);
                 return ResponseEntity.badRequest()
-                        .body(Map.of("success", false, "message", "Solde insuffisant. Solde actuel: " + account.getBalance() + " FCFA"));
+                        .body(Map.of("success", false,
+                                "message", String.format("Solde insuffisant sur le compte %s. Solde actuel: %d FCFA",
+                                        account.getAccountNumber(),
+                                        account.getBalance().longValue())));
             }
 
             // Débiter le compte
@@ -427,22 +477,27 @@ public class AdminController {
             transaction.setAccountId(account.getId());
             transaction.setAmount(amountBd);
             transaction.setType("DEBIT_MANUEL");
-            transaction.setDescription(request.getDescription() != null ? request.getDescription() : "Débit manuel admin depuis téléphone");
+            transaction.setDescription(String.format("%s - Compte: %s",
+                    request.getDescription() != null ? request.getDescription() : "Débit manuel admin depuis téléphone",
+                    account.getAccountNumber()));
             transaction.setStatus(TransactionStatus.COMPLETED);
             transaction.setCreatedAt(LocalDateTime.now());
             transactionRepository.save(transaction);
 
             // Log de succès
             loggingService.logTransaction("ADMIN_DEBIT_FROM_PHONE", "DEBIT_MANUEL", amount,
-                    null, null, request.getPhoneNumber(), null,
+                    account.getAccountNumber(), null, request.getPhoneNumber(), null,
                     request.getDescription(), transactionRef, "SUCCESS", null, 0.0, amount, httpServletRequest);
 
-            log.info("Débit depuis téléphone effectué avec succès - Phone: {}, Montant: {}",
-                    maskPhoneNumber(request.getPhoneNumber()), amount);
+            log.info("Débit depuis téléphone effectué avec succès - Phone: {}, Compte: {}, Montant: {}",
+                    maskPhoneNumber(request.getPhoneNumber()),
+                    account.getAccountNumber(),
+                    amount);
 
             return ResponseEntity.ok(Map.of(
                     "success", true,
-                    "message", "Débit effectué avec succès",
+                    "message", String.format("Débit effectué avec succès depuis le compte %s", account.getAccountNumber()),
+                    "accountNumber", account.getAccountNumber(),
                     "newBalance", account.getBalance().doubleValue()
             ));
 
@@ -470,13 +525,15 @@ public class AdminController {
         return phoneNumber.substring(0, Math.min(4, phoneNumber.length())) + "****";
     }
 
-    
-    //  DTO pour debit-from-phone
-    
+    // ============================================================
+    // DTO pour debit-from-phone (avec numéro de compte optionnel)
+    // ============================================================
+
     public static class DebitFromPhoneRequest {
         private String phoneNumber;
         private Double amount;
         private String description;
+        private String accountNumber;  // ← NOUVEAU : champ pour spécifier le compte
 
         public String getPhoneNumber() { return phoneNumber; }
         public void setPhoneNumber(String phoneNumber) { this.phoneNumber = phoneNumber; }
@@ -486,5 +543,8 @@ public class AdminController {
 
         public String getDescription() { return description; }
         public void setDescription(String description) { this.description = description; }
+
+        public String getAccountNumber() { return accountNumber; }
+        public void setAccountNumber(String accountNumber) { this.accountNumber = accountNumber; }
     }
 }
