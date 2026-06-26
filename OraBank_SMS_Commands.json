@@ -1,0 +1,178 @@
+{
+  "info": {
+    "name": "OraBank SMS Commands",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. SOLDE - Tous les comptes",
+      "request": {
+        "method": "POST",
+        "header": [
+          {"key": "Content-Type", "value": "application/json"},
+          {"key": "X-API-Key", "value": "ORABANK_2024_SECURE_WEBHOOK_KEY_12345"}
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"from\":\"+22890000001\",\"to\":\"ORABANK\",\"body\":\"SOLDE\"}"
+        },
+        "url": {
+          "raw": "https://sms-banking-pjcp.onrender.com/api/sms/webhook"
+        }
+      }
+    },
+    {
+      "name": "2. SOLDE - Compte spécifique",
+      "request": {
+        "method": "POST",
+        "header": [
+          {"key": "Content-Type", "value": "application/json"},
+          {"key": "X-API-Key", "value": "ORABANK_2024_SECURE_WEBHOOK_KEY_12345"}
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"from\":\"+22890000001\",\"to\":\"ORABANK\",\"body\":\"SOLDE COMPTE001\"}"
+        },
+        "url": {
+          "raw": "https://sms-banking-pjcp.onrender.com/api/sms/webhook"
+        }
+      }
+    },
+    {
+      "name": "3. TRANSFERT - Complet",
+      "request": {
+        "method": "POST",
+        "header": [
+          {"key": "Content-Type", "value": "application/json"},
+          {"key": "X-API-Key", "value": "ORABANK_2024_SECURE_WEBHOOK_KEY_12345"}
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"from\":\"+22890000001\",\"to\":\"ORABANK\",\"body\":\"TRANSFERT 1000 COMPTE001 +22890000002 COMPTE002\"}"
+        },
+        "url": {
+          "raw": "https://sms-banking-pjcp.onrender.com/api/sms/webhook"
+        }
+      }
+    },
+    {
+      "name": "4. TRANSFERT - Simple",
+      "request": {
+        "method": "POST",
+        "header": [
+          {"key": "Content-Type", "value": "application/json"},
+          {"key": "X-API-Key", "value": "ORABANK_2024_SECURE_WEBHOOK_KEY_12345"}
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"from\":\"+22890000001\",\"to\":\"ORABANK\",\"body\":\"TRANSFERT 1000 +22890000002\"}"
+        },
+        "url": {
+          "raw": "https://sms-banking-pjcp.onrender.com/api/sms/webhook"
+        }
+      }
+    },
+    {
+      "name": "5. TRANSFERT - Mobile Money",
+      "request": {
+        "method": "POST",
+        "header": [
+          {"key": "Content-Type", "value": "application/json"},
+          {"key": "X-API-Key", "value": "ORABANK_2024_SECURE_WEBHOOK_KEY_12345"}
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"from\":\"+22890000001\",\"to\":\"ORABANK\",\"body\":\"TRANSFERT 1000 COMPTE001 +22890000002 MOBILE\"}"
+        },
+        "url": {
+          "raw": "https://sms-banking-pjcp.onrender.com/api/sms/webhook"
+        }
+      }
+    },
+    {
+      "name": "6. HISTO",
+      "request": {
+        "method": "POST",
+        "header": [
+          {"key": "Content-Type", "value": "application/json"},
+          {"key": "X-API-Key", "value": "ORABANK_2024_SECURE_WEBHOOK_KEY_12345"}
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"from\":\"+22890000001\",\"to\":\"ORABANK\",\"body\":\"HISTO COMPTE001\"}"
+        },
+        "url": {
+          "raw": "https://sms-banking-pjcp.onrender.com/api/sms/webhook"
+        }
+      }
+    },
+    {
+      "name": "7. OTP",
+      "request": {
+        "method": "POST",
+        "header": [
+          {"key": "Content-Type", "value": "application/json"},
+          {"key": "X-API-Key", "value": "ORABANK_2024_SECURE_WEBHOOK_KEY_12345"}
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"from\":\"+22890000001\",\"to\":\"ORABANK\",\"body\":\"OTP\"}"
+        },
+        "url": {
+          "raw": "https://sms-banking-pjcp.onrender.com/api/sms/webhook"
+        }
+      }
+    },
+    {
+      "name": "8. HELP",
+      "request": {
+        "method": "POST",
+        "header": [
+          {"key": "Content-Type", "value": "application/json"},
+          {"key": "X-API-Key", "value": "ORABANK_2024_SECURE_WEBHOOK_KEY_12345"}
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"from\":\"+22890000001\",\"to\":\"ORABANK\",\"body\":\"HELP\"}"
+        },
+        "url": {
+          "raw": "https://sms-banking-pjcp.onrender.com/api/sms/webhook"
+        }
+      }
+    },
+    {
+      "name": "9. TRANSFER (Anglais)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {"key": "Content-Type", "value": "application/json"},
+          {"key": "X-API-Key", "value": "ORABANK_2024_SECURE_WEBHOOK_KEY_12345"}
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"from\":\"+22890000001\",\"to\":\"ORABANK\",\"body\":\"TRANSFER 1000 COMPTE001 +22890000002\"}"
+        },
+        "url": {
+          "raw": "https://sms-banking-pjcp.onrender.com/api/sms/webhook"
+        }
+      }
+    },
+    {
+      "name": "10. VIRER (Synonyme)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {"key": "Content-Type", "value": "application/json"},
+          {"key": "X-API-Key", "value": "ORABANK_2024_SECURE_WEBHOOK_KEY_12345"}
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"from\":\"+22890000001\",\"to\":\"ORABANK\",\"body\":\"VIRER 1000 COMPTE001 +22890000002\"}"
+        },
+        "url": {
+          "raw": "https://sms-banking-pjcp.onrender.com/api/sms/webhook"
+        }
+      }
+    }
+  ]
+}
