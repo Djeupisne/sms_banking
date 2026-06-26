@@ -374,9 +374,9 @@ public class AdminController {
         }
     }
 
-    // ============================================================
+    
     // ENDPOINT CORRIGÉ : Débit depuis téléphone avec gestion multi-comptes
-    // ============================================================
+    
 
     @PostMapping("/accounts/debit-from-phone")
     @PreAuthorize("hasRole('ADMIN')")
@@ -401,9 +401,9 @@ public class AdminController {
             Client client = clientRepository.findByPhoneNumber(request.getPhoneNumber())
                     .orElseThrow(() -> new RuntimeException("Client non trouvé: " + request.getPhoneNumber()));
 
-            // ============================================================
-            // 🔒 GESTION MULTI-COMPTES : Récupérer tous les comptes du client
-            // ============================================================
+            
+            //  GESTION MULTI-COMPTES : Récupérer tous les comptes du client
+            
             List<Account> accounts = accountRepository.findAllByClientId(client.getId());
 
             if (accounts.isEmpty()) {
@@ -414,9 +414,9 @@ public class AdminController {
                         .body(Map.of("success", false, "message", "Aucun compte trouvé pour ce client"));
             }
 
-            // ============================================================
+            
             // 🔒 Sélectionner le compte (avec priorité au compte spécifié ou premier compte actif)
-            // ============================================================
+            
             Account account;
 
             // Si un compte est spécifié dans la requête
@@ -525,9 +525,9 @@ public class AdminController {
         return phoneNumber.substring(0, Math.min(4, phoneNumber.length())) + "****";
     }
 
-    // ============================================================
+    
     // DTO pour debit-from-phone (avec numéro de compte optionnel)
-    // ============================================================
+    
 
     public static class DebitFromPhoneRequest {
         private String phoneNumber;

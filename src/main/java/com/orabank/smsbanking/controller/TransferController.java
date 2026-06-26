@@ -98,9 +98,9 @@ public class TransferController {
         return first + "****" + last;
     }
 
-    // ============================================================
+    
     // 1. VIREMENT INTERNE (COMPTE → COMPTE) - 0% frais
-    // ============================================================
+
 
     @PostMapping("/internal")
     @PreAuthorize("hasAnyRole('USER', 'ADMIN')")
@@ -204,9 +204,9 @@ public class TransferController {
         }
     }
 
-    // ============================================================
+
     // 2. VIREMENT INTERNE (Téléphone Orabank → COMPTE) - 10% frais
-    // ============================================================
+
 
     @PostMapping("/internal/from-phone")
     @PreAuthorize("hasAnyRole('USER', 'ADMIN')")
@@ -219,7 +219,7 @@ public class TransferController {
         Map<String, Object> response = new HashMap<>();
         Double amount = request.getAmount();
 
-        // ✅ Calcul des frais (10% du montant envoyé)
+        //  Calcul des frais (10% du montant envoyé)
         Double fees = Math.ceil(amount * 0.1);
         Double totalAmount = amount + fees;
         String transactionRef = UUID.randomUUID().toString();
@@ -268,7 +268,7 @@ public class TransferController {
             Account targetAccount = accountRepository.findByAccountNumber(request.getTargetAccountNumber())
                     .orElseThrow(() -> new RuntimeException("Compte cible non trouvé: " + request.getTargetAccountNumber()));
 
-            // ✅ Vérifier le solde (montant + frais)
+            //  Vérifier le solde (montant + frais)
             if (sourceAccount.getBalance().compareTo(totalAmountBd) < 0) {
                 response.put("success", false);
                 response.put("message", String.format(
@@ -283,18 +283,18 @@ public class TransferController {
 
             String commonReference = UUID.randomUUID().toString();
 
-            // ✅ Débiter le compte source (montant + frais)
+            //  Débiter le compte source (montant + frais)
             sourceAccount.setBalance(sourceAccount.getBalance().subtract(totalAmountBd));
             accountRepository.save(sourceAccount);
 
-            // ✅ Créditer le compte cible (montant uniquement)
+            //  Créditer le compte cible (montant uniquement)
             targetAccount.setBalance(targetAccount.getBalance().add(amountBd));
             accountRepository.save(targetAccount);
 
-            // ✅ Transaction de débit (montant total)
+            //  Transaction de débit (montant total)
             Transaction debitTransaction = new Transaction();
             debitTransaction.setAccountId(sourceAccount.getId());
-            debitTransaction.setAmount(totalAmountBd); // ✅ Total débité
+            debitTransaction.setAmount(totalAmountBd); //  Total débité
             debitTransaction.setType("VIREMENT_INTERNE");
             debitTransaction.setStatus(TransactionStatus.COMPLETED);
             debitTransaction.setReference(commonReference);
@@ -321,7 +321,7 @@ public class TransferController {
             creditTransaction.setCompletedAt(LocalDateTime.now());
             transactionRepository.save(creditTransaction);
 
-            // ✅ Transaction de frais
+            //  Transaction de frais
             if (feesBd.compareTo(BigDecimal.ZERO) > 0) {
                 Account feesAccount = accountRepository.findByAccountNumber("FEE_MOBILE_MONEY_001").orElse(null);
                 if (feesAccount != null) {
@@ -353,7 +353,7 @@ public class TransferController {
                     "SUCCESS", null, fees, totalAmount, httpServletRequest
             );
 
-            // ✅ Réponse claire
+            //  Réponse claire
             response.put("success", true);
             response.put("message", "Virement interne effectué avec succès");
             response.put("amountSent", request.getAmount()); // Montant reçu par le destinataire
@@ -363,9 +363,9 @@ public class TransferController {
             response.put("sourceAccount", sourceAccount.getAccountNumber());
             response.put("targetAccount", request.getTargetAccountNumber());
 
-            // ✅ Détails pour l'utilisateur
+            //  Détails pour l'utilisateur
             response.put("details", String.format(
-                    "✅ %d FCFA envoyés à %s. Frais: %d FCFA. Total débité: %d FCFA.",
+                    " %d FCFA envoyés à %s. Frais: %d FCFA. Total débité: %d FCFA.",
                     amount.longValue(),
                     request.getTargetAccountNumber(),
                     fees.longValue(),
@@ -389,9 +389,9 @@ public class TransferController {
         }
     }
 
-    // ============================================================
+
     // 3. TRANSFERT MOBILE MONEY (COMPTE → Téléphone) - 10% frais
-    // ============================================================
+
 
     @PostMapping("/mobile-money/from-account")
     @PreAuthorize("hasAnyRole('USER', 'ADMIN')")
@@ -401,9 +401,9 @@ public class TransferController {
                 request.getAccountNumber(), request.getAmount(), request.getRecipientPhone());
 
         Map<String, Object> response = new HashMap<>();
-        Double amountToSend = request.getAmount(); // ✅ Montant que le destinataire doit recevoir
+        Double amountToSend = request.getAmount(); //  Montant que le destinataire doit recevoir
 
-        // ✅ Calcul des frais (10% du montant envoyé)
+        //  Calcul des frais (10% du montant envoyé)
         Double fees = Math.ceil(amountToSend * 0.1);
         Double totalAmount = amountToSend + fees;
         String transactionRef = UUID.randomUUID().toString();
@@ -428,7 +428,7 @@ public class TransferController {
             Account sourceAccount = accountRepository.findByAccountNumber(request.getAccountNumber())
                     .orElseThrow(() -> new RuntimeException("Compte source non trouvé: " + request.getAccountNumber()));
 
-            // ✅ Vérifier le solde (montant + frais)
+            //  Vérifier le solde (montant + frais)
             if (sourceAccount.getBalance().compareTo(totalAmountBd) < 0) {
                 response.put("success", false);
                 response.put("message", String.format(
@@ -444,23 +444,23 @@ public class TransferController {
             Client sourceClient = clientRepository.findById(sourceAccount.getClientId())
                     .orElseThrow(() -> new RuntimeException("Client source non trouvé"));
 
-            // ✅ Appeler le service avec le bon montant
+            //  Appeler le service avec le bon montant
             boolean success = mobileMoneyService.transferToMobileMoney(
                     sourceClient.getPhoneNumber(),
-                    amountToSendBd // ✅ Le destinataire reçoit exactement ce montant
+                    amountToSendBd //  Le destinataire reçoit exactement ce montant
             );
 
             if (success) {
-                // ✅ Débiter le compte (montant envoyé + frais)
+                //  Débiter le compte (montant envoyé + frais)
                 sourceAccount.setBalance(sourceAccount.getBalance().subtract(totalAmountBd));
                 accountRepository.save(sourceAccount);
 
                 String commonReference = UUID.randomUUID().toString();
 
-                // ✅ Transaction de débit (montant total)
+                //  Transaction de débit (montant total)
                 Transaction debitTransaction = new Transaction();
                 debitTransaction.setAccountId(sourceAccount.getId());
-                debitTransaction.setAmount(totalAmountBd); // ✅ Total débité
+                debitTransaction.setAmount(totalAmountBd); //  Total débité
                 debitTransaction.setType("DEBIT_MOBILE_MONEY");
                 debitTransaction.setStatus(TransactionStatus.COMPLETED);
                 debitTransaction.setReference(commonReference);
@@ -473,7 +473,7 @@ public class TransferController {
                 debitTransaction.setCompletedAt(LocalDateTime.now());
                 transactionRepository.save(debitTransaction);
 
-                // ✅ Transaction de frais
+                //  Transaction de frais
                 Account feesAccount = accountRepository.findByAccountNumber("FEE_MOBILE_MONEY_001").orElse(null);
                 if (feesAccount != null && feesBd.compareTo(BigDecimal.ZERO) > 0) {
                     feesAccount.setBalance(feesAccount.getBalance().add(feesBd));
@@ -511,7 +511,7 @@ public class TransferController {
                         httpServletRequest
                 );
 
-                // ✅ Réponse claire
+                //  Réponse claire
                 response.put("success", true);
                 response.put("message", "Transfert Mobile Money effectué avec succès");
                 response.put("amountSent", amountToSend); // Montant reçu par le destinataire
@@ -520,9 +520,9 @@ public class TransferController {
                 response.put("recipientPhone", request.getRecipientPhone());
                 response.put("sourceAccount", request.getAccountNumber());
 
-                // ✅ Détails pour l'utilisateur
+                //  Détails pour l'utilisateur
                 response.put("details", String.format(
-                        "✅ %d FCFA envoyés à %s. Frais: %d FCFA. Total débité: %d FCFA.",
+                        " %d FCFA envoyés à %s. Frais: %d FCFA. Total débité: %d FCFA.",
                         amountToSend.longValue(),
                         request.getRecipientPhone(),
                         fees.longValue(),
@@ -575,9 +575,9 @@ public class TransferController {
         }
     }
 
-    // ============================================================
+
     // 4. TRANSFERT MOBILE MONEY (Téléphone Orabank → Téléphone) - 10% frais
-    // ============================================================
+
 
     @PostMapping("/mobile-money/from-phone")
     @PreAuthorize("hasAnyRole('USER', 'ADMIN')")
@@ -587,9 +587,9 @@ public class TransferController {
                 request.getSourcePhone(), request.getAmount(), request.getRecipientPhone());
 
         Map<String, Object> response = new HashMap<>();
-        Double amountToSend = request.getAmount(); // ✅ Montant que le destinataire doit recevoir
+        Double amountToSend = request.getAmount(); //  Montant que le destinataire doit recevoir
 
-        // ✅ Calcul des frais (10% du montant envoyé)
+        //  Calcul des frais (10% du montant envoyé)
         Double fees = Math.ceil(amountToSend * 0.1);
         Double totalAmount = amountToSend + fees;
         String transactionRef = UUID.randomUUID().toString();
@@ -614,7 +614,7 @@ public class TransferController {
             Client sourceClient = clientRepository.findByPhoneNumber(request.getSourcePhone())
                     .orElseThrow(() -> new RuntimeException("Client Orabank non trouvé: " + request.getSourcePhone()));
 
-            // ✅ Récupérer le compte du client (gestion multi-comptes)
+            //  Récupérer le compte du client (gestion multi-comptes)
             List<Account> clientAccounts = accountRepository.findByClientIdAndActiveTrue(sourceClient.getId());
             if (clientAccounts.isEmpty()) {
                 throw new RuntimeException("Aucun compte actif trouvé pour ce client");
@@ -623,7 +623,7 @@ public class TransferController {
             log.info("Compte source utilisé: {} (parmi {} comptes disponibles)",
                     sourceAccount.getAccountNumber(), clientAccounts.size());
 
-            // ✅ Vérifier le solde (montant + frais)
+            //  Vérifier le solde (montant + frais)
             if (sourceAccount.getBalance().compareTo(totalAmountBd) < 0) {
                 response.put("success", false);
                 response.put("message", String.format(
@@ -636,23 +636,23 @@ public class TransferController {
                 return ResponseEntity.badRequest().body(maskSensitiveInfo(response));
             }
 
-            // ✅ Appeler le service avec le bon montant
+            //  Appeler le service avec le bon montant
             boolean success = mobileMoneyService.transferToMobileMoney(
                     sourceClient.getPhoneNumber(),
-                    amountToSendBd // ✅ Le destinataire reçoit exactement ce montant
+                    amountToSendBd //  Le destinataire reçoit exactement ce montant
             );
 
             if (success) {
-                // ✅ Débiter le compte (montant envoyé + frais)
+                // Débiter le compte (montant envoyé + frais)
                 sourceAccount.setBalance(sourceAccount.getBalance().subtract(totalAmountBd));
                 accountRepository.save(sourceAccount);
 
                 String commonReference = UUID.randomUUID().toString();
 
-                // ✅ Transaction de débit (montant total)
+                //  Transaction de débit (montant total)
                 Transaction debitTransaction = new Transaction();
                 debitTransaction.setAccountId(sourceAccount.getId());
-                debitTransaction.setAmount(totalAmountBd); // ✅ Total débité
+                debitTransaction.setAmount(totalAmountBd); //  Total débité
                 debitTransaction.setType("DEBIT_MOBILE_MONEY");
                 debitTransaction.setStatus(TransactionStatus.COMPLETED);
                 debitTransaction.setReference(commonReference);
@@ -666,7 +666,7 @@ public class TransferController {
                 debitTransaction.setCompletedAt(LocalDateTime.now());
                 transactionRepository.save(debitTransaction);
 
-                // ✅ Transaction de frais
+                //  Transaction de frais
                 Account feesAccount = accountRepository.findByAccountNumber("FEE_MOBILE_MONEY_001").orElse(null);
                 if (feesAccount != null && feesBd.compareTo(BigDecimal.ZERO) > 0) {
                     feesAccount.setBalance(feesAccount.getBalance().add(feesBd));
@@ -704,7 +704,7 @@ public class TransferController {
                         httpServletRequest
                 );
 
-                // ✅ Réponse claire
+                //  Réponse claire
                 response.put("success", true);
                 response.put("message", "Transfert Mobile Money effectué avec succès");
                 response.put("amountSent", amountToSend); // Montant reçu par le destinataire
@@ -714,9 +714,9 @@ public class TransferController {
                 response.put("sourceAccount", sourceAccount.getAccountNumber());
                 response.put("recipientPhone", request.getRecipientPhone());
 
-                // ✅ Détails pour l'utilisateur
+                //  Détails pour l'utilisateur
                 response.put("details", String.format(
-                        "✅ %d FCFA envoyés à %s. Frais: %d FCFA. Total débité: %d FCFA.",
+                        "%d FCFA envoyés à %s. Frais: %d FCFA. Total débité: %d FCFA.",
                         amountToSend.longValue(),
                         request.getRecipientPhone(),
                         fees.longValue(),
@@ -769,9 +769,9 @@ public class TransferController {
         }
     }
 
-    // ============================================================
+
     // DTOs
-    // ============================================================
+
 
     @Data
     public static class InternalTransferRequest {

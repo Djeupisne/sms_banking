@@ -43,18 +43,18 @@ public class EmailService {
 
     @PostConstruct
     public void initialize() {
-        log.info("\n📧 === INITIALISATION SERVICE EMAIL (Brevo) ===");
+        log.info("\n === INITIALISATION SERVICE EMAIL (Brevo) ===");
 
         if (apiKey == null || apiKey.isBlank()) {
-            log.warn("⚠️  BREVO_API_KEY manquant – service email désactivé");
+            log.warn("  BREVO_API_KEY manquant – service email désactivé");
             log.warn("   → Ajoutez BREVO_API_KEY dans votre .env ou application-dev.yml");
             return;
         }
 
         this.isEnabled = true;
-        log.info("✅ Brevo initialisé avec succès");
-        log.info("📧 Expéditeur : {} <{}>", senderName, senderEmail);
-        log.info("📧 === FIN INITIALISATION ===\n");
+        log.info("Brevo initialisé avec succès");
+        log.info(" Expéditeur : {} <{}>", senderName, senderEmail);
+        log.info(" === FIN INITIALISATION ===\n");
     }
 
     /**
@@ -68,14 +68,14 @@ public class EmailService {
     public boolean sendResetPasswordEmail(String to, String name, String token) {
         String resetLink = frontendUrl + "/reset-password?token=" + token;
 
-        log.info("\n📧 Envoi email réinitialisation → {}", maskEmail(to));
+        log.info("\n Envoi email réinitialisation → {}", maskEmail(to));
         log.debug("   🔗 Lien : {}", resetLink);
 
         if (!isEnabled) {
-            log.warn("⚠️  Email simulé (BREVO_API_KEY non configuré)");
+            log.warn("  Email simulé (BREVO_API_KEY non configuré)");
             log.warn("   À     : {}", to);
             log.warn("   Objet : Réinitialisation de votre mot de passe – Orabank SMS Banking");
-            log.warn("   🔗 LIEN : {}", resetLink);
+            log.warn("    LIEN : {}", resetLink);
             return true;
         }
 
@@ -87,8 +87,8 @@ public class EmailService {
             return sendEmailViaBrevo(to, subject, htmlContent, textContent);
 
         } catch (Exception e) {
-            log.error("❌ Erreur inattendue lors de l'envoi email : {}", e.getMessage(), e);
-            log.info("🔗 LIEN DE RÉINITIALISATION (à copier manuellement) : {}", resetLink);
+            log.error(" Erreur inattendue lors de l'envoi email : {}", e.getMessage(), e);
+            log.info(" LIEN DE RÉINITIALISATION (à copier manuellement) : {}", resetLink);
             return false;
         }
     }
@@ -124,7 +124,7 @@ public class EmailService {
                     + "\"textContent\":\"" + escapeJson(textContent) + "\""
                     + "}";
 
-            log.debug("📤 Payload JSON Brevo (taille : {} octets)", jsonPayload.getBytes(StandardCharsets.UTF_8).length);
+            log.debug(" Payload JSON Brevo (taille : {} octets)", jsonPayload.getBytes(StandardCharsets.UTF_8).length);
 
             try (OutputStream os = conn.getOutputStream()) {
                 os.write(jsonPayload.getBytes(StandardCharsets.UTF_8));
@@ -134,23 +134,23 @@ public class EmailService {
 
             if (httpCode == 200 || httpCode == 201 || httpCode == 202) {
                 String responseBody = readStream(conn.getInputStream());
-                log.info("✅ Email envoyé avec succès – messageId: {}", extractMessageId(responseBody));
+                log.info(" Email envoyé avec succès – messageId: {}", extractMessageId(responseBody));
                 return true;
             } else {
                 String errorBody = readStream(conn.getErrorStream());
-                log.error("❌ Brevo a rejeté la requête : HTTP {} – {}", httpCode, errorBody);
+                log.error(" Brevo a rejeté la requête : HTTP {} – {}", httpCode, errorBody);
                 return false;
             }
 
         } catch (Exception e) {
-            log.error("❌ Erreur connexion Brevo : {}", e.getMessage(), e);
+            log.error(" Erreur connexion Brevo : {}", e.getMessage(), e);
             return false;
         }
     }
 
-    // -------------------------------------------------------------------------
+    
     // Construction du contenu de l'email
-    // -------------------------------------------------------------------------
+    
 
     /**
      * Template HTML de l'email de réinitialisation.
@@ -210,9 +210,9 @@ public class EmailService {
                 + "L'équipe Orabank SMS Banking";
     }
 
-    // -------------------------------------------------------------------------
+    
     // Utilitaires
-    // -------------------------------------------------------------------------
+    
 
     private String readStream(InputStream is) {
         if (is == null) return "(réponse vide)";

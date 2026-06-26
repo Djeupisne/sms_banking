@@ -31,7 +31,7 @@ public class MobileMoneySagaContext {
     private BigDecimal feesMax;
     private String debitTransactionId;
 
-    // ✅ NOUVEAU : Stocker le compte utilisé (pour logs et traçabilité)
+    //  NOUVEAU : Stocker le compte utilisé (pour logs et traçabilité)
     private String usedAccountNumber;
     private Long usedAccountId;
 

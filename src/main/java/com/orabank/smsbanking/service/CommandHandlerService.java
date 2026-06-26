@@ -34,9 +34,9 @@ public class CommandHandlerService {
     @Value("${app.sms.prefix:ORABANK}")
     private String smsPrefix;
 
-    // ============================================================
+    
     // PATTERNS POUR LE PARSING DES COMMANDES
-    // ============================================================
+    
 
     private static final Pattern BALANCE_PATTERN = Pattern.compile("(?i)^SOLDE\\?\\s*(\\w+)?$");
     private static final Pattern TRANSFER_PATTERN = Pattern.compile(
@@ -44,9 +44,9 @@ public class CommandHandlerService {
     );
     private static final Pattern HISTORY_PATTERN = Pattern.compile("(?i)^HISTO\\s*(\\w+)?$");
 
-    // ============================================================
+    
     // MÉTHODES UTILITAIRES
-    // ============================================================
+    
 
     private String normalizePhoneNumber(String phoneNumber) {
         log.info("Normalizing phone number: {}", phoneNumber);
@@ -55,9 +55,9 @@ public class CommandHandlerService {
         return normalized;
     }
 
-    // ============================================================
+    
     // MÉTHODE PRINCIPALE DE TRAITEMENT DES COMMANDES
-    // ============================================================
+    
 
     public String handleCommand(String command, String phoneNumber, String rawMessage) {
         log.info("=== HANDLE COMMAND START ===");
@@ -80,9 +80,9 @@ public class CommandHandlerService {
         return result;
     }
 
-    // ============================================================
+    
     // COMMANDE: SOLDE
-    // ============================================================
+    
 
     private String handleBalance(String phoneNumber, String rawMessage) {
         try {
@@ -156,9 +156,9 @@ public class CommandHandlerService {
         }
     }
 
-    // ============================================================
+    
     // COMMANDE: HISTO (Historique)
-    // ============================================================
+    
 
     private String handleHistory(String phoneNumber, String rawMessage) {
         try {
@@ -239,9 +239,9 @@ public class CommandHandlerService {
         }
     }
 
-    // ============================================================
+    
     // COMMANDE: OTP
-    // ============================================================
+    
 
     private String handleOtp(String phoneNumber) {
         try {
@@ -266,9 +266,9 @@ public class CommandHandlerService {
         }
     }
 
-    // ============================================================
+    
     // COMMANDE: TRANSFERT
-    // ============================================================
+    
 
     private String handleTransfer(String phoneNumber, String rawMessage) {
         try {
@@ -314,7 +314,7 @@ public class CommandHandlerService {
                 return String.format("%s - Numéro du destinataire invalide. Format attendu: +228XXXXXXXX", smsPrefix);
             }
 
-            // 🔒 EXTRAIRE LE COMPTE DESTINATAIRE (après le numéro de téléphone)
+            //  EXTRAIRE LE COMPTE DESTINATAIRE (après le numéro de téléphone)
             String recipientAccountNumber = smsParser.extractTargetAccountNumber(rawMessage);
             log.info("Compte destinataire extrait: {}", recipientAccountNumber);
 
@@ -322,13 +322,13 @@ public class CommandHandlerService {
                 return String.format("%s - Impossible de virer de l'argent vers votre propre compte.", smsPrefix);
             }
 
-            // 🔒 Récupérer les comptes du client émetteur
+            //  Récupérer les comptes du client émetteur
             List<Account> accounts = accountService.getAccountsByPhone(normalizedPhone);
             if (accounts.isEmpty()) {
                 return String.format("%s - Aucun compte trouvé.", smsPrefix);
             }
 
-            // 🔒 Sélectionner le compte source
+            //  Sélectionner le compte source
             Account sourceAccount;
             if (sourceAccountNumber != null && !sourceAccountNumber.isEmpty()) {
                 final String finalSourceAccountNumber = sourceAccountNumber;
@@ -356,7 +356,7 @@ public class CommandHandlerService {
                 sourceAccount = accounts.get(0);
             }
 
-            // 🔒 Vérifier le solde
+            //  Vérifier le solde
             if (sourceAccount.getBalance().compareTo(amount) < 0) {
                 log.warn("Solde insuffisant - Compte: {}, Solde: {}, Montant requis: {}",
                         sourceAccount.getAccountNumber(), sourceAccount.getBalance(), amount);
@@ -385,7 +385,7 @@ public class CommandHandlerService {
                             smsPrefix, sourceAccount.getAccountNumber());
                 }
             } else {
-                // 🔒 APPEL DE LA NOUVELLE MÉTHODE AVEC VÉRIFICATION DU COMPTE DESTINATAIRE
+                //  APPEL DE LA NOUVELLE MÉTHODE AVEC VÉRIFICATION DU COMPTE DESTINATAIRE
                 accountService.transferFromAccountWithTargetAccount(
                         sourceAccount,
                         recipientPhone,
@@ -429,9 +429,9 @@ public class CommandHandlerService {
         }
     }
 
-    // ============================================================
+    
     // COMMANDE: HELP
-    // ============================================================
+    
 
     private String handleHelp() {
         return smsPrefix + " - Commandes disponibles:\n" +
@@ -447,9 +447,9 @@ public class CommandHandlerService {
                 "HELP - Cette aide";
     }
 
-    // ============================================================
+    
     // GESTION DES COMMANDES INCONNUES
-    // ============================================================
+    
 
     private String handleUnknownCommand(String command) {
         log.warn("Commande inconnue: {}", command);

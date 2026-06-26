@@ -33,13 +33,13 @@ public class JwtTokenService {
 
             if ("dev".equals(activeProfile) || "default".equals(activeProfile) || "test".equals(activeProfile)) {
                 // TOLÉRANCE EN DEV : Génération automatique pour ne pas bloquer le développeur
-                log.warn("⚠️ [DEV] Clé JWT absente ou trop courte ({} caractères). Génération automatique d'une clé aléatoire temporaire.",
+                log.warn(" [DEV] Clé JWT absente ou trop courte ({} caractères). Génération automatique d'une clé aléatoire temporaire.",
                         secretKey != null ? secretKey.length() : 0);
                 secretKey = generateSecureKey();
             } else {
                 // SÉCURITÉ EN PRODUCTION : Fail-Fast (Arrêt immédiat de l'application)
                 String errorMsg = String.format(
-                        "🚨 ERREUR CRITIQUE DE SÉCURITÉ : La variable d'environnement JWT_SECRET est absente ou trop courte (%d caractères). " +
+                        " ERREUR CRITIQUE DE SÉCURITÉ : La variable d'environnement JWT_SECRET est absente ou trop courte (%d caractères). " +
                                 "En production, une clé robuste d'au moins 32 caractères est OBLIGATOIRE. Arrêt de l'application.",
                         secretKey != null ? secretKey.length() : 0
                 );
@@ -51,7 +51,7 @@ public class JwtTokenService {
         this.secretKey = Keys.hmacShaKeyFor(secretKey.getBytes(StandardCharsets.UTF_8));
         this.expirationMs = expirationMs;
 
-        log.info("✅ JWT Token Service initialized [Profile: {}]. Clé: {} octets, Expiration: {} ms",
+        log.info(" JWT Token Service initialized [Profile: {}]. Clé: {} octets, Expiration: {} ms",
                 activeProfile, this.secretKey.getEncoded().length, expirationMs);
     }
 

@@ -49,9 +49,9 @@ public class AccountService {
     @Value("${internal-transfer.fees.account-number:FEE_INTERNAL_TRANSFER_001}")
     private String internalTransferFeesAccountNumber;
 
-    // ============================================================
+    
     // MÉTHODE UTILITAIRE : Récupération du compte avec gestion multi-comptes
-    // ============================================================
+    
 
     /**
      * Récupère le compte d'un client.

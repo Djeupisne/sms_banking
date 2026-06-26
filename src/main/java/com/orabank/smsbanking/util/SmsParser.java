@@ -20,10 +20,6 @@ public class SmsParser {
 
     private static final Pattern HISTORY_PATTERN = Pattern.compile("^HISTO(?:RIQUE)?$", Pattern.CASE_INSENSITIVE);
     private static final Pattern OTP_PATTERN = Pattern.compile("^OTP$", Pattern.CASE_INSENSITIVE);
-    private static final Pattern TRANSFER_PATTERN = Pattern.compile(
-            "^TRANSFER\\s+\\d+(?:\\s+\\w+)?(?:\\s+\\+?\\d+)?(?:\\s+\\w+)?(?:\\s+MOBILE)?$",
-            Pattern.CASE_INSENSITIVE
-    );
     private static final Pattern HELP_PATTERN = Pattern.compile("^HELP$", Pattern.CASE_INSENSITIVE);
 
     /**
@@ -56,8 +52,12 @@ public class SmsParser {
         } else if (trimmedMessage.equals("OTP")) {
             log.debug("Identified OTP command");
             return CommandType.OTP;
-        } else if (trimmedMessage.startsWith("TRANSFER")) {
-            log.debug("Identified TRANSFER command");
+        }
+        // ✅ AJOUT : Reconnaître TRANSFERT (français), TRANSFER (anglais), VIRER (synonyme)
+        else if (trimmedMessage.startsWith("TRANSFERT") ||
+                trimmedMessage.startsWith("TRANSFER") ||
+                trimmedMessage.startsWith("VIRER")) {
+            log.debug("Identified TRANSFER command from: {}", trimmedMessage);
             return CommandType.TRANSFER;
         } else if (trimmedMessage.equals("HELP")) {
             log.debug("Identified HELP command");

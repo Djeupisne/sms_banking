@@ -72,9 +72,7 @@ public class ApiController {
         return ResponseEntity.ok(clientRepository.findAll());
     }
 
-    // ✅ La méthode getAccountsByPhone a été SUPPRIMÉE car elle existe déjà dans ClientController.java
-    // ❌ Ne pas ajouter : @GetMapping("/clients/{phoneNumber}/accounts")
-
+   
     /**
      * Récupère toutes les transactions avec les informations client.
      */

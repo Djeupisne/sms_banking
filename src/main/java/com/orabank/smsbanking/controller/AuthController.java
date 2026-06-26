@@ -60,9 +60,9 @@ public class AuthController {
         return ResponseEntity.ok(response);
     }
 
-    // ============================================================
+    
     // ENDPOINTS DE RÉINITIALISATION DE MOT DE PASSE
-    // ============================================================
+    
 
     @PostMapping("/forgot-password")
     public ResponseEntity<Map<String, Object>> forgotPassword(@RequestBody ForgotPasswordRequest request) {

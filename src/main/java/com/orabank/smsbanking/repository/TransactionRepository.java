@@ -14,9 +14,9 @@ import java.util.List;
 @Repository
 public interface TransactionRepository extends JpaRepository<Transaction, Long> {
 
-    // ============================================================
+    
     // MÉTHODES EXISTANTES
-    // ============================================================
+    
 
     /**
      * Récupère les 5 dernières transactions d'un compte
@@ -39,9 +39,9 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
      */
     List<Transaction> findByStatus(TransactionStatus status);
 
-    // ============================================================
+    
     // MÉTHODES AVEC LIMIT DYNAMIQUE (CORRECTES)
-    // ============================================================
+    
 
     /**
      * Récupère les N dernières transactions d'un compte (limit dynamique)
@@ -127,9 +127,9 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
             @Param("limit") int limit,
             @Param("offset") int offset);
 
-    // ============================================================
+    
     // MÉTHODES DE COMPTAGE
-    // ============================================================
+    
 
     /**
      * Compte le nombre total de transactions pour un compte
@@ -149,9 +149,9 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
     @Query("SELECT COUNT(t) FROM Transaction t WHERE t.accountId = :accountId AND t.status = :status")
     long countByAccountIdAndStatus(@Param("accountId") Long accountId, @Param("status") TransactionStatus status);
 
-    // ============================================================
+    
     // MÉTHODES DE SOMME
-    // ============================================================
+    
 
     /**
      * Récupère le montant total des transactions d'un type pour un compte
