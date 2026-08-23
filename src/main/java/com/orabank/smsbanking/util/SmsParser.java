@@ -18,9 +18,11 @@ public class SmsParser {
     // PATTERNS
     // ============================================================
 
+    private static final Pattern SOLDE_PATTERN = Pattern.compile("^SOLDE\\??(?:\\s|$)", Pattern.CASE_INSENSITIVE);
     private static final Pattern HISTORY_PATTERN = Pattern.compile("^HISTO(?:RIQUE)?$", Pattern.CASE_INSENSITIVE);
     private static final Pattern OTP_PATTERN = Pattern.compile("^OTP$", Pattern.CASE_INSENSITIVE);
     private static final Pattern HELP_PATTERN = Pattern.compile("^HELP$", Pattern.CASE_INSENSITIVE);
+    private static final Pattern TRANSFER_PATTERN = Pattern.compile("^TRANSF(?:ER|ERT)\\s+\\d", Pattern.CASE_INSENSITIVE);
 
     /**
      * Parses the command type from the SMS message.
@@ -35,37 +37,45 @@ public class SmsParser {
             return CommandType.UNKNOWN;
         }
 
-        String trimmedMessage = message.trim().toUpperCase();
+        String trimmedMessage = message.trim();
 
         // ============================================================
-        // VÉRIFICATION SPÉCIFIQUE POUR SOLDE (plus robuste)
-        // Accepte: SOLDE, SOLDE?, SOLDE COMPTEXXX, SOLDE? COMPTEXXX
+        // VÉRIFICATION AVEC PATTERNS POUR ÉVITER LES FAUX POSITIFS
         // ============================================================
-        if (trimmedMessage.startsWith("SOLDE")) {
+        
+        // SOLDE ou SOLDE? suivi d'un espace ou fin de chaîne
+        if (SOLDE_PATTERN.matcher(trimmedMessage).find()) {
             log.debug("Identified SOLDE command from: {}", trimmedMessage);
             return CommandType.SOLDE;
         }
 
-        if (trimmedMessage.startsWith("HISTO")) {
+        // HISTO ou HISTORIQUE exact
+        if (HISTORY_PATTERN.matcher(trimmedMessage).matches()) {
             log.debug("Identified HISTORY command");
             return CommandType.HISTO;
-        } else if (trimmedMessage.equals("OTP")) {
+        }
+        
+        // OTP exact
+        if (trimmedMessage.equalsIgnoreCase("OTP")) {
             log.debug("Identified OTP command");
             return CommandType.OTP;
         }
-        // ✅ AJOUT : Reconnaître TRANSFERT (français), TRANSFER (anglais), VIRER (synonyme)
-        else if (trimmedMessage.startsWith("TRANSFERT") ||
-                trimmedMessage.startsWith("TRANSFER") ||
-                trimmedMessage.startsWith("VIRER")) {
+        
+        // TRANSFER ou TRANSFERT suivi d'un chiffre
+        if (TRANSFER_PATTERN.matcher(trimmedMessage).find()) {
             log.debug("Identified TRANSFER command from: {}", trimmedMessage);
             return CommandType.TRANSFER;
-        } else if (trimmedMessage.equals("HELP")) {
+        }
+        
+        // HELP exact
+        if (trimmedMessage.equalsIgnoreCase("HELP")) {
             log.debug("Identified HELP command");
             return CommandType.HELP;
-        } else {
-            log.debug("Unknown command: {}", trimmedMessage);
-            return CommandType.UNKNOWN;
         }
+
+        // Aucun pattern ne correspond
+        log.debug("Unknown command: {}", trimmedMessage);
+        return CommandType.UNKNOWN;
     }
 
     /**
