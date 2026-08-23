@@ -38,10 +38,10 @@ public class SmsProcessingService {
     private boolean mockEnabled;
 
     // ============================================================
-    // GÉNÉRATION DE RÉFÉRENCE AVEC UUID COMPLET
+    // GÉNÉRATION DE RÉFÉRENCE AVEC UUID COMPLET (8 caractères)
     // ============================================================
 
-    private String generateConversationReference() {
+    private String generateReference() {
         String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
         String uuid = UUID.randomUUID().toString().replace("-", "").substring(0, 8).toUpperCase();
         return "SMS_" + timestamp + "_" + uuid;
@@ -52,22 +52,43 @@ public class SmsProcessingService {
         String from = request.getFrom();
         String body = request.getBody();
 
-        // ============================================================
-        // GÉNÉRER UNE RÉFÉRENCE UNIQUE POUR LA CONVERSATION
-        // ============================================================
-        String conversationReference = generateConversationReference();
-        log.info("Référence de conversation: {}", conversationReference);
+        log.info("========================================");
+        log.info("📩 TRAITEMENT SMS");
+        log.info("From: {}", from);
+        log.info("Body: {}", body);
+        log.info("Mock Mode: {}", mockEnabled ? "ACTIVÉ ✅" : "DÉSACTIVÉ ❌");
+        log.info("========================================");
 
+        // ============================================================
+        // NORMALISATION DU NUMÉRO DE TÉLÉPHONE
+        // ============================================================
         String normalizedFrom = SmsUtils.normalizePhoneNumber(from);
         if (normalizedFrom == null) {
             log.error("Numero de telephone invalide: {}", from);
-            return new SmsResponseDto(from, "ORABANK - Numero de telephone invalide.");
+            return SmsResponseDto.builder()
+                    .to(from)
+                    .message("ORABANK - Numero de telephone invalide.")
+                    .status("ERROR")
+                    .build();
         }
 
+        // ============================================================
+        // RATE LIMITER
+        // ============================================================
         if (!rateLimiterService.isAllowed(normalizedFrom)) {
             log.warn("Rate limite depasse pour le numero: {}", LoggingUtil.maskPhoneNumber(normalizedFrom));
-            return new SmsResponseDto(normalizedFrom, "ORABANK - Trop de requetes. Veuillez reessayer dans 1 minute.");
+            return SmsResponseDto.builder()
+                    .to(normalizedFrom)
+                    .message("ORABANK - Trop de requetes. Veuillez reessayer dans 1 minute.")
+                    .status("ERROR")
+                    .build();
         }
+
+        // ============================================================
+        // GÉNÉRER UNE RÉFÉRENCE UNIQUE POUR LE SMS ENTRANT
+        // ============================================================
+        String incomingReference = generateReference();
+        log.info("Référence entrante: {}", incomingReference);
 
         // ============================================================
         // SAUVEGARDE DU SMS ENTRANT
@@ -76,11 +97,12 @@ public class SmsProcessingService {
         try {
             incomingLog = smsLogMapper.toEntity(request);
             incomingLog.setDirection(SmsDirection.INCOMING);
-            incomingLog.setReference(conversationReference);
+            incomingLog.setReference(incomingReference);
             smsLogRepository.save(incomingLog);
-            log.info("SMS recu - Ref: {}, From: {}", conversationReference, LoggingUtil.maskPhoneNumber(normalizedFrom));
+            log.info("✅ SMS entrant sauvegardé - Ref: {}, From: {}", 
+                    incomingReference, LoggingUtil.maskPhoneNumber(normalizedFrom));
         } catch (Exception e) {
-            log.error("Erreur sauvegarde SMS entrant", e);
+            log.error("❌ Erreur sauvegarde SMS entrant", e);
         }
 
         // ============================================================
@@ -93,89 +115,105 @@ public class SmsProcessingService {
         String responseMessage;
         try {
             responseMessage = commandHandlerService.handleCommand(command, normalizedFrom, body);
+            log.info("✅ Commande exécutée avec succès");
         } catch (InsufficientBalanceException e) {
-            log.warn("Solde insuffisant pour le client: {}", LoggingUtil.maskPhoneNumber(normalizedFrom));
+            log.warn("⚠️ Solde insuffisant pour le client: {}", LoggingUtil.maskPhoneNumber(normalizedFrom));
             responseMessage = "ORABANK - Solde insuffisant. Votre solde actuel ne permet pas ce virement.";
         } catch (Exception e) {
-            log.error("Erreur traitement commande pour {}", LoggingUtil.maskPhoneNumber(normalizedFrom), e);
+            log.error("❌ Erreur traitement commande pour {}", LoggingUtil.maskPhoneNumber(normalizedFrom), e);
             responseMessage = "ORABANK - Erreur technique. Veuillez reessayer.";
         }
 
         // ============================================================
-        // ENVOI DU SMS (avec gestion d'erreur)
+        // GÉNÉRER UNE NOUVELLE RÉFÉRENCE UNIQUE POUR LE SMS SORTANT
+        // ============================================================
+        String outgoingReference = generateReference();
+        log.info("Référence sortante: {}", outgoingReference);
+
+        // ============================================================
+        // ENVOI DU SMS
         // ============================================================
         boolean smsSentSuccessfully = false;
         try {
             smsSentSuccessfully = smsGateway.sendSms(normalizedFrom, responseMessage);
-            log.info("Envoi SMS vers {}: {}", LoggingUtil.maskPhoneNumber(normalizedFrom), 
+            log.info("📱 Envoi SMS vers {}: {}", 
+                    LoggingUtil.maskPhoneNumber(normalizedFrom), 
                     smsSentSuccessfully ? "SUCCÈS ✅" : "ÉCHEC ❌");
         } catch (Exception e) {
-            log.error("Erreur envoi SMS vers {}", LoggingUtil.maskPhoneNumber(normalizedFrom), e);
+            log.error("❌ Erreur envoi SMS vers {}", LoggingUtil.maskPhoneNumber(normalizedFrom), e);
         }
 
         // ============================================================
-        // SAUVEGARDE DU SMS SORTANT (après l'envoi)
+        // SAUVEGARDE DU SMS SORTANT (avec SA PROPRE RÉFÉRENCE)
         // ============================================================
         try {
-            SmsLog outgoingLog = new SmsLog();
-            outgoingLog.setSender(request.getTo());
-            outgoingLog.setTo(normalizedFrom);
-            outgoingLog.setBody(responseMessage);
-            outgoingLog.setDirection(SmsDirection.OUTGOING);
-            outgoingLog.setReference(conversationReference); // Même référence que l'entrant
-            outgoingLog.setProcessedSuccessfully(smsSentSuccessfully);
-            
-            if (!smsSentSuccessfully) {
-                outgoingLog.setErrorMessage("Échec envoi SMS - Gateway non disponible ou erreur");
-            }
-            
-            if (incomingLog != null) {
-                outgoingLog.setRelatedSmsId(incomingLog.getId());
-            }
+            SmsLog outgoingLog = SmsLog.builder()
+                    .sender(request.getTo())
+                    .to(normalizedFrom)
+                    .body(responseMessage)
+                    .direction(SmsDirection.OUTGOING)
+                    .reference(outgoingReference)  // ← NOUVELLE RÉFÉRENCE !
+                    .processedSuccessfully(smsSentSuccessfully)
+                    .relatedSmsId(incomingLog != null ? incomingLog.getId() : null)
+                    .errorMessage(smsSentSuccessfully ? null : "Échec envoi SMS - Gateway non disponible")
+                    .build();
             
             smsLogRepository.save(outgoingLog);
-            log.info("SMS sortant sauvegarde - Ref: {}, To: {}, Status: {}", 
-                    conversationReference, 
+            log.info("✅ SMS sortant sauvegardé - Ref: {}, To: {}, Status: {}", 
+                    outgoingReference, 
                     LoggingUtil.maskPhoneNumber(normalizedFrom),
                     smsSentSuccessfully ? "SUCCÈS" : "ÉCHEC");
         } catch (Exception e) {
-            log.error("Erreur sauvegarde SMS sortant", e);
-            // Tentative de sauvegarde avec une nouvelle référence
+            log.error("❌ Erreur sauvegarde SMS sortant - Ref: {}", outgoingReference, e);
+            
+            // ============================================================
+            // TENTATIVE DE SAUVEGARDE AVEC UNE NOUVELLE RÉFÉRENCE
+            // ============================================================
             try {
-                SmsLog retryLog = new SmsLog();
-                retryLog.setSender(request.getTo());
-                retryLog.setTo(normalizedFrom);
-                retryLog.setBody(responseMessage);
-                retryLog.setDirection(SmsDirection.OUTGOING);
-                retryLog.setReference(SmsLog.generateReference()); // Nouvelle référence
-                retryLog.setProcessedSuccessfully(smsSentSuccessfully);
-                if (!smsSentSuccessfully) {
-                    retryLog.setErrorMessage("Échec envoi SMS - Gateway non disponible");
-                }
-                if (incomingLog != null) {
-                    retryLog.setRelatedSmsId(incomingLog.getId());
-                }
+                String retryReference = generateReference();
+                log.warn("Tentative de sauvegarde avec nouvelle référence: {}", retryReference);
+                
+                SmsLog retryLog = SmsLog.builder()
+                        .sender(request.getTo())
+                        .to(normalizedFrom)
+                        .body(responseMessage)
+                        .direction(SmsDirection.OUTGOING)
+                        .reference(retryReference)  // ← NOUVELLE RÉFÉRENCE
+                        .processedSuccessfully(smsSentSuccessfully)
+                        .relatedSmsId(incomingLog != null ? incomingLog.getId() : null)
+                        .errorMessage(smsSentSuccessfully ? null : "Échec envoi SMS - Gateway non disponible")
+                        .build();
+                
                 smsLogRepository.save(retryLog);
-                log.info("SMS sortant sauvegarde avec nouvelle référence: {}", retryLog.getReference());
+                log.info("✅ SMS sortant sauvegardé avec nouvelle référence: {}", retryReference);
+                
+                // Mettre à jour la référence de réponse
+                outgoingReference = retryReference;
             } catch (Exception retryException) {
-                log.error("Échec définitif de la sauvegarde du SMS sortant", retryException);
+                log.error("❌ Échec définitif de la sauvegarde du SMS sortant", retryException);
             }
         }
 
         // ============================================================
-        // CONSTRUCTION DE LA RÉPONSE
+        // CONSTRUCTION DE LA RÉPONSE (avec la référence sortante)
         // ============================================================
-        SmsResponseDto response = new SmsResponseDto();
-        response.setTo(normalizedFrom);
-        response.setReference(conversationReference);
-        response.setStatus(smsSentSuccessfully ? "SENT" : "FAILED");
-        
-        if (smsSentSuccessfully) {
-            response.setMessage(responseMessage);
-        } else {
-            response.setMessage(responseMessage + " [Échec envoi SMS]");
+        String finalMessage = responseMessage;
+        if (!smsSentSuccessfully) {
+            finalMessage = responseMessage + " [Échec envoi SMS]";
         }
 
-        return response;
+        log.info("========================================");
+        log.info("📤 RÉPONSE SMS");
+        log.info("To: {}", LoggingUtil.maskPhoneNumber(normalizedFrom));
+        log.info("Status: {}", smsSentSuccessfully ? "SENT ✅" : "FAILED ❌");
+        log.info("Reference: {}", outgoingReference);
+        log.info("========================================");
+
+        return SmsResponseDto.builder()
+                .to(normalizedFrom)
+                .message(finalMessage)
+                .reference(outgoingReference)  // ← RÉFÉRENCE SORTANTE
+                .status(smsSentSuccessfully ? "SENT" : "FAILED")
+                .build();
     }
 }
