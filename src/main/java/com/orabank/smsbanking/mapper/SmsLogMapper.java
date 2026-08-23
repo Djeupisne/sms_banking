@@ -47,6 +47,7 @@ public interface SmsLogMapper {
     @Mapping(target = "errorMessage", ignore = true)
     @Mapping(target = "processedSuccessfully", ignore = true)
     @Mapping(target = "createdAt", ignore = true)
+    @Mapping(target = "reference", ignore = true)  // Généré automatiquement par @PrePersist
     SmsLog toEntity(SmsRequestDto dto);
     
     /**
@@ -67,5 +68,6 @@ public interface SmsLogMapper {
     @Mapping(target = "timestamp", ignore = true)
     @Mapping(target = "processedSuccessfully", ignore = true)
     @Mapping(target = "createdAt", ignore = true)
+    @Mapping(target = "reference", ignore = true)  // Généré automatiquement par @PrePersist
     SmsLog createOutgoingLog(String toPhone, String fromPhone, String content);
 }

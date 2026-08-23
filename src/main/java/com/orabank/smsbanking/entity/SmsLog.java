@@ -9,6 +9,7 @@ import lombok.Builder;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.UUID;
 
 @Entity
 @Table(name = "sms_logs")
@@ -63,13 +64,24 @@ public class SmsLog {
         if (processedSuccessfully == null) {
             processedSuccessfully = true;
         }
-        if (reference == null || reference.isEmpty()) {
+        // La référence est générée uniquement si elle est nulle ou vide
+        // Pour éviter les doublons lors des retries Resilience4j
+        // IMPORTANT: Ne pas régénérer si déjà définie par le service
+        if (reference == null || reference.trim().isEmpty()) {
             reference = generateReference();
         }
     }
 
-    private String generateReference() {
-        return "SMS_" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss")) +
-                "_" + String.format("%04d", (int)(Math.random() * 10000));
+    /**
+     * Génère une référence unique avec UUID complet pour éviter les collisions.
+     * Format: SMS_yyyyMMdd_HHmmss_XXXX où XXXX est un UUID court (8 caractères)
+     * 
+     * @return une référence unique
+     */
+    public static String generateReference() {
+        String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
+        // Utiliser 8 caractères d'UUID pour une unicité quasi-certaine
+        String uuid = UUID.randomUUID().toString().replace("-", "").substring(0, 8).toUpperCase();
+        return "SMS_" + timestamp + "_" + uuid;
     }
 }

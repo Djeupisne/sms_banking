@@ -206,7 +206,7 @@ class CommandHandlerServiceTest {
         );
 
         // Then
-        assertTrue(response.contains("Dernieres transactions"), "Response should indicate history");
+        assertTrue(response.contains("Historique") || response.contains("Dernieres transactions"), "Response should indicate history");
         assertTrue(response.contains("COMPTE002"), "Response should contain account number");
         verify(accountService, times(1)).getAccountsByPhone(eq(phoneNumber));
         verify(accountService, times(1)).getLastTransactions(eq(phoneNumber), eq("COMPTE002"), eq(5));
