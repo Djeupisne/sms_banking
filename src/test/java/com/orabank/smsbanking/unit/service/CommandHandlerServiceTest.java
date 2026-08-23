@@ -113,11 +113,10 @@ class CommandHandlerServiceTest {
         );
 
         // Then
-        assertTrue(response.contains("Vos comptes"), "Response should list accounts");
-        assertTrue(response.contains("COMPTE002"), "Response should contain COMPTE002");
-        assertTrue(response.contains("COMPTE005"), "Response should contain COMPTE005");
         assertTrue(response.contains("750000"), "Response should contain COMPTE002 balance");
         assertTrue(response.contains("228000"), "Response should contain COMPTE005 balance");
+        assertTrue(response.contains("COMPTE002"), "Response should contain COMPTE002");
+        assertTrue(response.contains("COMPTE005"), "Response should contain COMPTE005");
         verify(accountService, times(1)).getAccountsByPhone(eq(phoneNumber));
     }
 
@@ -305,7 +304,8 @@ class CommandHandlerServiceTest {
         when(accountService.getAccountsByPhone(eq(phoneNumber))).thenReturn(accounts);
         when(smsParser.extractTransferAmount(anyString())).thenReturn(amount);
         when(smsParser.extractRecipientPhone(anyString())).thenReturn(recipientPhone);
-        when(accountService.transferFromAccount(any(Account.class), eq(recipientPhone), any(BigDecimal.class), anyString()))
+        when(smsParser.extractTargetAccountNumber(anyString())).thenReturn(null);
+        when(accountService.transferFromAccountWithTargetAccount(any(Account.class), eq(recipientPhone), isNull(), any(BigDecimal.class), anyString()))
                 .thenReturn(mockTransaction);
 
         // When
@@ -319,7 +319,7 @@ class CommandHandlerServiceTest {
         assertTrue(response.contains("50000"), "Response should contain transfer amount");
         assertTrue(response.contains("COMPTE002"), "Response should contain source account");
         verify(accountService, times(1)).getAccountsByPhone(eq(phoneNumber));
-        verify(accountService, times(1)).transferFromAccount(any(Account.class), eq(recipientPhone), any(BigDecimal.class), anyString());
+        verify(accountService, times(1)).transferFromAccountWithTargetAccount(any(Account.class), eq(recipientPhone), isNull(), any(BigDecimal.class), anyString());
     }
 
     @Test

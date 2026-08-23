@@ -1,1 +1,27 @@
-Nothing should be ignored in this case, as the only added file is a markdown documentation file (GUIDE_DEMONSTRATION_POSTMAN.md), which is a source/config file and not a build artifact, dependency, or temporary file.
+```
+# Compiled and build artifacts
+*.class
+target/
+# Dependencies
+.mypy_cache/
+.pytest_cache/
+# Logs and temp files
+*.log
+*.tmp
+# Environment
+.env
+.env.local
+.env.*
+# Editors
+.vscode/
+.idea/
+# Coverage reports
+coverage/
+htmlcov/
+.coverage
+jacoco.exec
+# Maven specific
+.mvn/
+!mvnw
+!mvnw.cmd
+```
