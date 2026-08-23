@@ -37,10 +37,6 @@ public class SmsProcessingService {
     @Value("${sms.mock.enabled:false}")
     private boolean mockEnabled;
 
-    // ============================================================
-    // GÉNÉRATION DE RÉFÉRENCE AVEC UUID COMPLET
-    // ============================================================
-
     private String generateReference() {
         String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
         String uuid = UUID.randomUUID().toString().replace("-", "").substring(0, 8).toUpperCase();
@@ -59,9 +55,7 @@ public class SmsProcessingService {
         log.info("Mock Mode: {}", mockEnabled ? "ACTIVÉ ✅" : "DÉSACTIVÉ ❌");
         log.info("========================================");
 
-        // ============================================================
-        // NORMALISATION DU NUMÉRO
-        // ============================================================
+        // Normalisation
         String normalizedFrom = SmsUtils.normalizePhoneNumber(from);
         if (normalizedFrom == null) {
             log.error("Numero de telephone invalide: {}", from);
@@ -72,9 +66,7 @@ public class SmsProcessingService {
                     .build();
         }
 
-        // ============================================================
-        // RATE LIMITER
-        // ============================================================
+        // Rate Limiter
         if (!rateLimiterService.isAllowed(normalizedFrom)) {
             log.warn("Rate limite depasse pour le numero: {}", LoggingUtil.maskPhoneNumber(normalizedFrom));
             return SmsResponseDto.builder()
@@ -85,10 +77,26 @@ public class SmsProcessingService {
         }
 
         // ============================================================
-        // ÉTAPE 1 : GÉNÉRER LA RÉFÉRENCE UNIQUE POUR LA CONVERSATION
+        // ÉTAPE 1 : SAUVEGARDER LE SMS ENTRANT SANS RÉFÉRENCE
         // ============================================================
-        String conversationReference = generateReference();
-        log.info("Référence de conversation: {}", conversationReference);
+        SmsLog incomingLog = null;
+        try {
+            incomingLog = smsLogMapper.toEntity(request);
+            incomingLog.setDirection(SmsDirection.INCOMING);
+            // NE PAS définir la référence - elle restera null
+            // La référence sera générée automatiquement par @PrePersist si elle est null
+            // MAIS on va la mettre à jour APRÈS
+            smsLogRepository.save(incomingLog);
+            log.info("✅ SMS entrant sauvegardé - ID: {}, From: {}", 
+                    incomingLog.getId(), LoggingUtil.maskPhoneNumber(normalizedFrom));
+        } catch (Exception e) {
+            log.error("❌ Erreur sauvegarde SMS entrant", e);
+            return SmsResponseDto.builder()
+                    .to(normalizedFrom)
+                    .message("ORABANK - Erreur technique. Veuillez reessayer.")
+                    .status("ERROR")
+                    .build();
+        }
 
         // ============================================================
         // ÉTAPE 2 : TRAITEMENT DE LA COMMANDE
@@ -123,38 +131,33 @@ public class SmsProcessingService {
         }
 
         // ============================================================
-        // ÉTAPE 4 : SAUVEGARDER LES DEUX SMS AVEC LA MÊME RÉFÉRENCE
+        // ÉTAPE 4 : GÉNÉRER LA RÉFÉRENCE UNIQUE
+        // ============================================================
+        String conversationReference = generateReference();
+        log.info("Référence de conversation: {}", conversationReference);
+
+        // ============================================================
+        // ÉTAPE 5 : SAUVEGARDER LE SMS SORTANT AVEC LA RÉFÉRENCE
         // ============================================================
         try {
-            // SMS ENTRANT
-            SmsLog incomingLog = smsLogMapper.toEntity(request);
-            incomingLog.setDirection(SmsDirection.INCOMING);
-            incomingLog.setReference(conversationReference);  // ← MÊME RÉFÉRENCE
-            smsLogRepository.save(incomingLog);
-
-            // SMS SORTANT
             SmsLog outgoingLog = SmsLog.builder()
                     .sender(request.getTo())
                     .to(normalizedFrom)
                     .body(responseMessage)
                     .direction(SmsDirection.OUTGOING)
-                    .reference(conversationReference)  // ← MÊME RÉFÉRENCE
+                    .reference(conversationReference)
                     .processedSuccessfully(smsSentSuccessfully)
                     .relatedSmsId(incomingLog.getId())
                     .errorMessage(smsSentSuccessfully ? null : "Échec envoi SMS - Gateway non disponible")
                     .build();
             
             smsLogRepository.save(outgoingLog);
-
-            log.info("✅ SMS entrant sauvegardé - Ref: {}, ID: {}", conversationReference, incomingLog.getId());
-            log.info("✅ SMS sortant sauvegardé - Ref: {}, To: {}, Status: {}, Lié à: {}", 
+            log.info("✅ SMS sortant sauvegardé - Ref: {}, To: {}, Status: {}", 
                     conversationReference, 
                     LoggingUtil.maskPhoneNumber(normalizedFrom),
-                    smsSentSuccessfully ? "SUCCÈS" : "ÉCHEC",
-                    incomingLog.getId());
-
+                    smsSentSuccessfully ? "SUCCÈS" : "ÉCHEC");
         } catch (Exception e) {
-            log.error("❌ Erreur sauvegarde des SMS", e);
+            log.error("❌ Erreur sauvegarde SMS sortant", e);
             return SmsResponseDto.builder()
                     .to(normalizedFrom)
                     .message("ORABANK - Erreur technique. Veuillez reessayer.")
@@ -163,7 +166,20 @@ public class SmsProcessingService {
         }
 
         // ============================================================
-        // ÉTAPE 5 : RÉPONSE
+        // ÉTAPE 6 : METTRE À JOUR LE SMS ENTRANT AVEC LA RÉFÉRENCE
+        // ============================================================
+        try {
+            incomingLog.setReference(conversationReference);
+            smsLogRepository.save(incomingLog);
+            log.info("✅ SMS entrant mis à jour - Ref: {}, ID: {}", 
+                    conversationReference, incomingLog.getId());
+        } catch (Exception e) {
+            log.error("❌ Erreur mise à jour SMS entrant", e);
+            // On continue car le SMS sortant est déjà sauvegardé
+        }
+
+        // ============================================================
+        // ÉTAPE 7 : RÉPONSE
         // ============================================================
         String finalMessage = responseMessage;
         if (!smsSentSuccessfully) {
