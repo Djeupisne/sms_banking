@@ -52,7 +52,12 @@ public class SmsLog {
     @Builder.Default
     private LocalDateTime createdAt = LocalDateTime.now();
 
-    @Column(name = "reference", unique = true)
+    // Reference partagée entre le SMS entrant (INCOMING) et le SMS sortant
+    // (OUTGOING) d'un même échange, afin de les identifier/regrouper ensemble.
+    // NB: plus de contrainte unique() ici — voir migration Flyway
+    // V<N>__drop_sms_logs_reference_unique.sql qui retire la contrainte
+    // "sms_logs_reference_key" côté base.
+    @Column(name = "reference")
     private String reference;
 
     @PrePersist
@@ -71,14 +76,14 @@ public class SmsLog {
     }
 
     /**
-     * Génère une référence unique avec UUID complet pour éviter les collisions.
+     * Génère une référence avec UUID pour éviter les collisions
+     * lorsqu'aucune référence de conversation n'a été fournie explicitement.
      * Format: SMS_yyyyMMdd_HHmmss_XXXXXXXX (8 caractères UUID)
-     * 
-     * @return une référence unique
+     *
+     * @return une référence
      */
     public static String generateReference() {
         String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
-        // Utiliser 8 caractères d'UUID pour une unicité quasi-certaine
         String uuid = UUID.randomUUID().toString().replace("-", "").substring(0, 8).toUpperCase();
         return "SMS_" + timestamp + "_" + uuid;
     }
