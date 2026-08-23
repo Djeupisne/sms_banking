@@ -85,25 +85,33 @@ public class SmsProcessingService {
         }
 
         // ============================================================
-        // ÉTAPE 1 : SAUVEGARDER LE SMS ENTRANT SANS RÉFÉRENCE
+        // ÉTAPE 1 : GÉNÉRER LA RÉFÉRENCE UNIQUE POUR LA CONVERSATION
+        // ============================================================
+        String conversationReference = generateReference();
+        log.info("Référence de conversation: {}", conversationReference);
+
+        // ============================================================
+        // ÉTAPE 2 : SAUVEGARDER LE SMS ENTRANT AVEC LA RÉFÉRENCE
         // ============================================================
         SmsLog incomingLog = null;
         try {
             incomingLog = smsLogMapper.toEntity(request);
             incomingLog.setDirection(SmsDirection.INCOMING);
-            // NE PAS définir la référence - elle sera générée automatiquement par @PrePersist
-            // mais on la laisse null pour qu'elle soit générée
+            incomingLog.setReference(conversationReference);
             smsLogRepository.save(incomingLog);
-            log.info("✅ SMS entrant sauvegardé (sans référence) - ID: {}, From: {}", 
-                    incomingLog.getId(), 
-                    LoggingUtil.maskPhoneNumber(normalizedFrom));
+            log.info("✅ SMS entrant sauvegardé - Ref: {}, From: {}", 
+                    conversationReference, LoggingUtil.maskPhoneNumber(normalizedFrom));
         } catch (Exception e) {
             log.error("❌ Erreur sauvegarde SMS entrant", e);
-            // On continue malgré l'erreur
+            return SmsResponseDto.builder()
+                    .to(normalizedFrom)
+                    .message("ORABANK - Erreur technique. Veuillez reessayer.")
+                    .status("ERROR")
+                    .build();
         }
 
         // ============================================================
-        // TRAITEMENT DE LA COMMANDE
+        // ÉTAPE 3 : TRAITEMENT DE LA COMMANDE
         // ============================================================
         var commandType = smsParser.parseCommand(body);
         String command = commandType.name();
@@ -122,13 +130,7 @@ public class SmsProcessingService {
         }
 
         // ============================================================
-        // ÉTAPE 2 : GÉNÉRER LA RÉFÉRENCE UNIQUE POUR LA CONVERSATION
-        // ============================================================
-        String conversationReference = generateReference();
-        log.info("Référence de conversation: {}", conversationReference);
-
-        // ============================================================
-        // ENVOI DU SMS
+        // ÉTAPE 4 : ENVOI DU SMS
         // ============================================================
         boolean smsSentSuccessfully = false;
         try {
@@ -141,7 +143,7 @@ public class SmsProcessingService {
         }
 
         // ============================================================
-        // ÉTAPE 3 : SAUVEGARDER LE SMS SORTANT AVEC LA RÉFÉRENCE
+        // ÉTAPE 5 : SAUVEGARDER LE SMS SORTANT AVEC LA MÊME RÉFÉRENCE
         // ============================================================
         try {
             SmsLog outgoingLog = SmsLog.builder()
@@ -149,9 +151,9 @@ public class SmsProcessingService {
                     .to(normalizedFrom)
                     .body(responseMessage)
                     .direction(SmsDirection.OUTGOING)
-                    .reference(conversationReference)  // ← RÉFÉRENCE PRINCIPALE
+                    .reference(conversationReference)  // ← MÊME RÉFÉRENCE !
                     .processedSuccessfully(smsSentSuccessfully)
-                    .relatedSmsId(incomingLog != null ? incomingLog.getId() : null)
+                    .relatedSmsId(incomingLog.getId())  // ← LIEN AVEC LE SMS ENTRANT
                     .errorMessage(smsSentSuccessfully ? null : "Échec envoi SMS - Gateway non disponible")
                     .build();
             
@@ -162,25 +164,11 @@ public class SmsProcessingService {
                     smsSentSuccessfully ? "SUCCÈS" : "ÉCHEC");
         } catch (Exception e) {
             log.error("❌ Erreur sauvegarde SMS sortant", e);
-            // Si la sauvegarde échoue (rare avec UUID), on ne peut pas continuer
+            // On continue malgré l'erreur pour retourner une réponse au client
         }
 
         // ============================================================
-        // ÉTAPE 4 : METTRE À JOUR LE SMS ENTRANT AVEC LA MÊME RÉFÉRENCE
-        // ============================================================
-        if (incomingLog != null && incomingLog.getId() != null) {
-            try {
-                incomingLog.setReference(conversationReference);
-                smsLogRepository.save(incomingLog);
-                log.info("✅ SMS entrant mis à jour - Ref: {}, ID: {}", 
-                        conversationReference, incomingLog.getId());
-            } catch (Exception e) {
-                log.error("❌ Erreur mise à jour SMS entrant avec la référence", e);
-            }
-        }
-
-        // ============================================================
-        // CONSTRUCTION DE LA RÉPONSE (avec la référence de conversation)
+        // ÉTAPE 6 : CONSTRUCTION DE LA RÉPONSE
         // ============================================================
         String finalMessage = responseMessage;
         if (!smsSentSuccessfully) {
@@ -197,7 +185,7 @@ public class SmsProcessingService {
         return SmsResponseDto.builder()
                 .to(normalizedFrom)
                 .message(finalMessage)
-                .reference(conversationReference)  // ← RÉFÉRENCE UNIQUE
+                .reference(conversationReference)
                 .status(smsSentSuccessfully ? "SENT" : "FAILED")
                 .build();
     }
