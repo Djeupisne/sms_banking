@@ -44,15 +44,15 @@ spring:
 
 server:
   port: ${PORT:8080}
+  address: 0.0.0.0
   error:
-    include-message: never
-    include-binding-errors: never
+    include-message: always
+    include-binding-errors: always
   tomcat:
     connection-timeout: 20000
     max-threads: 200
     accesslog:
-      enabled: true
-      directory: /var/log/tomcat
+      enabled: false
 
 # Configuration JWT
 jwt:
@@ -62,14 +62,14 @@ jwt:
     secret: ${JWT_RESET_PASSWORD_SECRET}
     expiration-ms: 1800000
 
-# Configuration SMS - désactivée pour l'instant
+# Configuration SMS - désactivée pour la démo (pas de clés API réelles)
 moov:
   sms:
     enabled: ${MOOV_SMS_ENABLED:false}
     api:
-      key: ${MOOV_SMS_API_KEY:}
-      secret: ${MOOV_SMS_API_SECRET:}
-      url: ${MOOV_SMS_API_URL:}
+      key: ${MOOV_SMS_API_KEY:demo_key}
+      secret: ${MOOV_SMS_API_SECRET:demo_secret}
+      url: ${MOOV_SMS_API_URL:https://api.moov.tg/sms/v1/send}
     sender:
       id: ${MOOV_SMS_SENDER_ID:ORABANK}
 
@@ -77,9 +77,9 @@ togocel:
   sms:
     enabled: ${TOGOCEL_SMS_ENABLED:false}
     api:
-      key: ${TOGOCEL_SMS_API_KEY:}
-      secret: ${TOGOCEL_SMS_API_SECRET:}
-      url: ${TOGOCEL_SMS_API_URL:}
+      key: ${TOGOCEL_SMS_API_KEY:demo_key}
+      secret: ${TOGOCEL_SMS_API_SECRET:demo_secret}
+      url: ${TOGOCEL_SMS_API_URL:https://api.togocel.com/sms/v1/send}
     sender:
       id: ${TOGOCEL_SMS_SENDER_ID:ORABANK}
 
@@ -101,40 +101,6 @@ encryption:
   key: ${ENCRYPTION_KEY}
 
 # Core Banking
-core:
-  banking:
-    base:
-      url: ${CORE_BANKING_BASE_URL}
-    mock:
-      enabled: ${CORE_BANKING_MOCK_ENABLED:true}
-    connect:
-      timeout:
-        ms: 10000
-    read:
-      timeout:
-        ms: 30000
-
-# Webhook
-webhook:
-  auth:
-    method: ${WEBHOOK_AUTH_METHOD:none}
-  api:
-    key: ${WEBHOOK_API_KEY}
-    enabled: ${WEBHOOK_API_ENABLED:false}
-  secret:
-    key: ${WEBHOOK_SECRET_KEY}
-  signature:
-    enabled: ${WEBHOOK_SIGNATURE_ENABLED:false}
-    max-age-ms: 300000
-
-# Admin/User
-admin:
-  username: admin
-  password: ${ADMIN_PASSWORD}
-
-user:
-  username: user
-  password: ${USER_PASSWORD}
 
 # Rate Limiting
 rate:
@@ -145,7 +111,7 @@ rate:
     redis:
       enabled: ${RATE_LIMIT_REDIS_ENABLED:false}
 
-# Mobile Money
+# Mobile Money - Désactivé pour la démo
 mobile-money:
   max-amount: 500000
   fees:
@@ -163,53 +129,24 @@ internal-transfer:
     max-amount: 2000
     account-number: FEE_INTERNAL_TRANSFER_001
 
-# Brevo
-brevo:
-  api:
-    key: ${BREVO_API_KEY}
-  sender:
-    email: ${BREVO_SENDER_EMAIL}
-    name: ${BREVO_SENDER_NAME}
+# Logging pour débogage
+logging:
+  level:
+    com.orabank.smsbanking: DEBUG
+    org.springframework.web: DEBUG
+    org.hibernate.SQL: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
 
-# Frontend
-app:
-  frontend:
-    url: ${FRONTEND_URL}
-
-# Management
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info,metrics
-      base-path: /actuator
-  endpoint:
-    health:
-      show-details: when-authorized
-      probes:
-        enabled: true
-  metrics:
-    tags:
-      application: ${spring.application.name}
-  tracing:
-    enabled: false
-
-# Resilience4j
-resilience4j:
-  circuitbreaker:
-    configs:
-      default:
-        registerHealthIndicator: true
-        slidingWindowSize: 10
-        minimumNumberOfCalls: 5
-        permittedNumberOfCallsInHalfOpenState: 3
-        automaticTransitionFromOpenToHalfOpenEnabled: true
-        waitDurationInOpenState: 30s
-        failureRateThreshold: 50
-  retry:
-    configs:
-      default:
-        maxAttempts: 3
-        waitDuration: 1s
-        enableExponentialBackoff: true
-        exponentialBackoffMultiplier: 2
+core:
+  banking:
+    base:
+      url: ${CORE_BANKING_BASE_URL:http://localhost:8081/api}
+    mock:
+      enabled: ${CORE_BANKING_MOCK_ENABLED:true}
+    connect:
+      timeout:
+        ms: 10000
+    read:
+      timeout:
+        ms: 30000
