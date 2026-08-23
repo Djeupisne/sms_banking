@@ -65,8 +65,6 @@ public class SmsLog {
             processedSuccessfully = true;
         }
         // La référence est générée uniquement si elle est nulle ou vide
-        // Pour éviter les doublons lors des retries Resilience4j
-        // IMPORTANT: Ne pas régénérer si déjà définie par le service
         if (reference == null || reference.trim().isEmpty()) {
             reference = generateReference();
         }
@@ -74,7 +72,7 @@ public class SmsLog {
 
     /**
      * Génère une référence unique avec UUID complet pour éviter les collisions.
-     * Format: SMS_yyyyMMdd_HHmmss_XXXX où XXXX est un UUID court (8 caractères)
+     * Format: SMS_yyyyMMdd_HHmmss_XXXXXXXX (8 caractères UUID)
      * 
      * @return une référence unique
      */
