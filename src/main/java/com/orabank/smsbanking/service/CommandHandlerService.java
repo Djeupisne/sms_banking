@@ -53,7 +53,7 @@ public class CommandHandlerService {
     // TRANSFERT 50000 +22890000002 COMPTE001 OTP918675
     // TRANSFERT 50000 COMPTE001 +22890000002 918675
     private static final Pattern TRANSFER_WITH_OTP_PATTERN = Pattern.compile(
-            "(?i)^TRANSFERT\\s+(\\d+)\\s+(?:COMPTE\\d+|\\+\\d+)\\s+(?:COMPTE\\d+|\\+\\d+)\\s+(?:OTP\\s*)?(\\d{6})$"
+            "(?i)^TRANSFERT\\s+(\\d+)\\s+((?:COMPTE\\d+|\\+\\d+)\\s+)+(?:OTP\\s*)?(\\d{6})$"
     );
     // MÉTHODES UTILITAIRES
 
@@ -316,15 +316,19 @@ public class CommandHandlerService {
             
             if (otpMatcher.matches()) {
                 // Format avec OTP: TRANSFERT MONT [COMPTE] [+PHONE] [COMPTEDEST] OTP
-                otpCode = otpMatcher.group(2);
+                otpCode = otpMatcher.group(3);
                 log.info("OTP extrait du message: {}", otpCode != null ? "****" : "null");
+                
+                // Extraire le compte source en utilisant la nouvelle méthode
+                sourceAccountNumber = smsParser.extractSourceAccountNumber(trimmedMessage);
+                log.info("Compte source extrait: {}", sourceAccountNumber);
             }
             
-            // Parser normal pour les autres cas
+            // Parser normal pour les autres cas (sans OTP)
             Matcher transferMatcher = TRANSFER_PATTERN.matcher(trimmedMessage);
             boolean isMobileMoney = false;
 
-            if (transferMatcher.matches()) {
+            if (transferMatcher.matches() && otpCode == null) {
                 sourceAccountNumber = transferMatcher.group(2);
                 isMobileMoney = "MOBILE".equalsIgnoreCase(transferMatcher.group(3));
             }

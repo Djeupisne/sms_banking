@@ -127,20 +127,37 @@ public class SmsParser {
     }
 
     /**
-     * Extracts the source account number from a command.
-     * Pour les transferts, retourne le premier compte trouvé (compte source).
+     * Extracts the source account number from a transfer command.
+     * Le compte source est le premier COMPTE trouvé APRÈS le montant.
+     * Gère les deux formats:
+     * - TRANSFERT 50000 COMPTE001 +228... OTP123456
+     * - TRANSFERT 50000 +228... COMPTE001 OTP123456
      *
-     * @param message the command message
-     * @return the extracted account number, or null if not found
+     * @param message the transfer command message
+     * @return the extracted source account number, or null if not found
      */
-    public String extractAccountNumber(String message) {
+    public String extractSourceAccountNumber(String message) {
         if (message == null) {
             return null;
         }
 
         String[] parts = message.trim().split("\\s+");
-
-        for (String part : parts) {
+        
+        // Commencer après le mot-clé TRANSFERT et le montant (index 2+)
+        for (int i = 2; i < parts.length; i++) {
+            String part = parts[i];
+            
+            // Si on trouve un numéro de téléphone, arrêter la recherche du compte source
+            if (part.matches("^\\+?\\d{8,15}$")) {
+                break;
+            }
+            
+            // Si on trouve OTP ou un code OTP, arrêter
+            if (part.equalsIgnoreCase("OTP") || part.matches("^\\d{6}$")) {
+                break;
+            }
+            
+            // Chercher le premier COMPTE
             if (part.matches("^COMPTE\\d+$")) {
                 return part;
             }
@@ -151,7 +168,10 @@ public class SmsParser {
 
     /**
      * Extracts the target account number from a transfer command.
-     * Le compte destinataire est le compte après le numéro de téléphone.
+     * Le compte destinataire est le compte APRÈS le numéro de téléphone.
+     * Gère les deux formats:
+     * - TRANSFERT 50000 COMPTE001 +228... COMPTE002 OTP123456
+     * - TRANSFERT 50000 +228... COMPTE001 COMPTE002 OTP123456
      *
      * @param message the transfer command message
      * @return the extracted target account number, or null if not found
@@ -176,7 +196,14 @@ public class SmsParser {
         // Chercher un compte après le numéro de téléphone
         if (phoneIndex != -1) {
             for (int i = phoneIndex + 1; i < parts.length; i++) {
-                if (parts[i].matches("^COMPTE\\d+$")) {
+                String part = parts[i];
+                
+                // Ignorer OTP et les codes à 6 chiffres
+                if (part.equalsIgnoreCase("OTP") || part.matches("^\\d{6}$")) {
+                    continue;
+                }
+                
+                if (part.matches("^COMPTE\\d+$")) {
                     return parts[i];
                 }
             }
