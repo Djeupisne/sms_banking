@@ -45,7 +45,7 @@ public class CommandHandlerService {
     private static final Pattern TRANSFER_PATTERN = Pattern.compile(
             "(?i)^TRANSFERT\\s+(\\d+)(?:\\s+(\\w+))?\\s*$"
     );
-    private static final Pattern HISTORY_PATTERN = Pattern.compile("(?i)^HISTO(?:\\s*(\\w+))?$");
+    private static final Pattern HISTORY_PATTERN = Pattern.compile("(?i)^HISTO(?:RIQUE)?(?:\\s+(\\w+))?$");
     
     // Pattern flexible pour TRANSFERT avec OTP - accepte plusieurs formats:
     // TRANSFERT 50000 COMPTE001 +22890000002 OTP918675

@@ -49,11 +49,11 @@ public class SmsParser {
             return CommandType.SOLDE;
         }
 
-        // HISTO ou HISTORIQUE exact
-        if (HISTORY_PATTERN.matcher(trimmedMessage).matches()) {
-            log.debug("Identified HISTORY command");
-            return CommandType.HISTO;
-        }
+    // HISTO ou HISTORIQUE suivi d'un espace ou fin de chaîne
+    if (HISTORY_PATTERN.matcher(trimmedMessage).find()) {
+        log.debug("Identified HISTORY command from: {}", trimmedMessage);
+        return CommandType.HISTO;
+    }
         
         // OTP exact
         if (trimmedMessage.equalsIgnoreCase("OTP")) {
