@@ -40,12 +40,14 @@ public class CommandHandlerService {
 
     private static final Pattern BALANCE_PATTERN = Pattern.compile("(?i)^SOLDE\\?\\s*(\\w+)?$");
     private static final Pattern TRANSFER_PATTERN = Pattern.compile(
-            "(?i)^TRANSFERT\\s+(\\d+)\\s*(\\w+)?\\s*(MOBILE)?$"
+            "(?i)^TRANSFERT\s+(\d+)\s*(\w+)?\s*(MOBILE)?$"
     );
-    private static final Pattern HISTORY_PATTERN = Pattern.compile("(?i)^HISTO\\s*(\\w+)?$");
-
-    
+    private static final Pattern HISTORY_PATTERN = Pattern.compile("(?i)^HISTO\s*(\w+)?$");
+    private static final Pattern TRANSFER_WITH_OTP_PATTERN = Pattern.compile(
+            "(?i)^TRANSFERT\\s+(\\d+)\\s*(\\w+)?\\s*\\+?(\\d+)\\s*(COMPTE\\d+)?\\s*(\\d{6})$"
+    );
     // MÉTHODES UTILITAIRES
+
     
 
     private String normalizePhoneNumber(String phoneNumber) {
@@ -267,7 +269,7 @@ public class CommandHandlerService {
     }
 
     
-    // COMMANDE: TRANSFERT
+    // COMMANDE: TRANSFERT AVEC OTP OBLIGATOIRE
     
 
     private String handleTransfer(String phoneNumber, String rawMessage) {
@@ -281,11 +283,24 @@ public class CommandHandlerService {
 
             String trimmedMessage = rawMessage.trim();
             if (trimmedMessage.equalsIgnoreCase("TRANSFER")) {
-                return String.format("%s - Format invalide. Exemple: TRANSFERT 50000 COMPTE002 +22890000003 COMPTE003", smsPrefix);
+                return String.format("%s - Format invalide. Exemple: TRANSFERT 50000 COMPTE002 +22890000003 OTP123456", smsPrefix);
             }
 
-            Matcher transferMatcher = TRANSFER_PATTERN.matcher(trimmedMessage);
+            // Vérifier si la commande contient un OTP (format: TRANSFERT X ... OTP123456)
+            Matcher otpMatcher = TRANSFER_WITH_OTP_PATTERN.matcher(trimmedMessage);
             String sourceAccountNumber = null;
+            String recipientPhoneFromOtp = null;
+            String recipientAccountFromOtp = null;
+            String otpCode = null;
+            
+            if (otpMatcher.matches()) {
+                // Format avec OTP: TRANSFERT MONT [COMPTE] [+PHONE] [COMPTEDEST] OTP
+                otpCode = otpMatcher.group(5);
+                log.info("OTP extrait du message: {}", otpCode != null ? "****" : "null");
+            }
+            
+            // Parser normal pour les autres cas
+            Matcher transferMatcher = TRANSFER_PATTERN.matcher(trimmedMessage);
             boolean isMobileMoney = false;
 
             if (transferMatcher.matches()) {
@@ -295,7 +310,7 @@ public class CommandHandlerService {
 
             Long amountLong = smsParser.extractTransferAmount(rawMessage);
             if (amountLong == null || amountLong == 0) {
-                return String.format("%s - Montant invalide. Exemple: TRANSFERT 50000 COMPTE002 +22890000003 COMPTE003", smsPrefix);
+                return String.format("%s - Montant invalide. Exemple: TRANSFERT 50000 COMPTE002 +22890000003 OTP123456", smsPrefix);
             }
 
             if (amountLong < 0) {
@@ -304,21 +319,38 @@ public class CommandHandlerService {
 
             BigDecimal amount = BigDecimal.valueOf(amountLong);
 
+            // VÉRIFICATION OTP REQUISE POUR TOUS LES TRANSFERTS
+            if (otpCode == null) {
+                return String.format("%s - OTP requis pour tout transfert. Envoyez d'abord 'OTP' pour recevoir votre code, puis utilisez: TRANSFERT %d [+228...] [COMPTEXXX] OTP123456", 
+                        smsPrefix, amount.longValue());
+            }
+            
+            // Vérifier l'OTP
+            boolean otpValid = phoneVerificationService.verifyOtp(normalizedPhone, otpCode);
+            if (!otpValid) {
+                return String.format("%s - Code OTP invalide ou expiré. Envoyez 'OTP' pour recevoir un nouveau code.", smsPrefix);
+            }
+            
+            log.info("OTP vérifié avec succès pour le numéro masqué: {}", LoggingUtil.maskPhoneNumber(normalizedPhone));
+
             String recipientPhoneRaw = smsParser.extractRecipientPhone(rawMessage);
-            if (recipientPhoneRaw == null) {
-                return String.format("%s - Numéro du destinataire manquant. Exemple: TRANSFERT 50000 COMPTE002 +22890000003 COMPTE003", smsPrefix);
+            if (recipientPhoneRaw == null && !isMobileMoney) {
+                return String.format("%s - Numéro du destinataire manquant. Exemple: TRANSFERT 50000 COMPTE002 +22890000003 OTP123456", smsPrefix);
             }
 
-            String recipientPhone = normalizePhoneNumber(recipientPhoneRaw);
-            if (recipientPhone == null) {
-                return String.format("%s - Numéro du destinataire invalide. Format attendu: +228XXXXXXXX", smsPrefix);
+            String recipientPhone = null;
+            if (recipientPhoneRaw != null) {
+                recipientPhone = normalizePhoneNumber(recipientPhoneRaw);
+                if (recipientPhone == null) {
+                    return String.format("%s - Numéro du destinataire invalide. Format attendu: +228XXXXXXXX", smsPrefix);
+                }
             }
 
             //  EXTRAIRE LE COMPTE DESTINATAIRE (après le numéro de téléphone)
             String recipientAccountNumber = smsParser.extractTargetAccountNumber(rawMessage);
             log.info("Compte destinataire extrait: {}", recipientAccountNumber);
 
-            if (normalizedPhone.equals(recipientPhone)) {
+            if (recipientPhone != null && normalizedPhone.equals(recipientPhone)) {
                 return String.format("%s - Impossible de virer de l'argent vers votre propre compte.", smsPrefix);
             }
 
@@ -350,7 +382,7 @@ public class CommandHandlerService {
                     String accountList = accounts.stream()
                             .map(Account::getAccountNumber)
                             .collect(Collectors.joining(", "));
-                    return String.format("%s - Plusieurs comptes trouvés. Veuillez spécifier le compte source: TRANSFERT %d COMPTEXXX +228... (Vos comptes: %s)",
+                    return String.format("%s - Plusieurs comptes trouvés. Veuillez spécifier le compte source: TRANSFERT %d COMPTEXXX +228... OTP123456 (Vos comptes: %s)",
                             smsPrefix, amount.longValue(), accountList);
                 }
                 sourceAccount = accounts.get(0);
@@ -413,7 +445,7 @@ public class CommandHandlerService {
             return String.format("%s - Solde insuffisant.", smsPrefix);
 
         } catch (NumberFormatException e) {
-            return String.format("%s - Montant invalide. Exemple: TRANSFERT 50000 COMPTE002 +22890000003 COMPTE003", smsPrefix);
+            return String.format("%s - Montant invalide. Exemple: TRANSFERT 50000 COMPTE002 +22890000003 OTP123456", smsPrefix);
 
         } catch (ClientNotFoundException e) {
             log.warn("Client non trouvé lors du virement - Émetteur: {}", LoggingUtil.maskPhoneNumber(phoneNumber));
@@ -439,11 +471,9 @@ public class CommandHandlerService {
                 "SOLDE? COMPTEXXX - Solde d'un compte spécifique\n" +
                 "HISTO COMPTEXXX - Historique d'un compte\n" +
                 "OTP - Generer code OTP\n" +
-                "TRANSFERT X COMPTEXXX +228... COMPTEYYY - Virement avec compte source et destinataire\n" +
-                "TRANSFERT X +228... COMPTEYYY - Virement avec compte destinataire\n" +
-                "TRANSFERT X COMPTEXXX +228... - Virement avec compte source\n" +
-                "TRANSFERT X +228... - Virement simple\n" +
-                "TRANSFERT X MOBILE - Virement Mobile Money\n" +
+                "TRANSFERT X COMPTEXXX +228... [COMPTEYYY] OTP123 - Virement avec OTP requis\n" +
+                "TRANSFERT X +228... [COMPTEYYY] OTP123 - Virement simple avec OTP\n" +
+                "TRANSFERT X MOBILE - Virement Mobile Money (avec OTP)\n" +
                 "HELP - Cette aide";
     }
 
