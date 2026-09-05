@@ -214,15 +214,77 @@ public class SmsParser {
 
     /**
      * Checks if a transfer command specifies MOBILE transfer type.
+     * Detects MOBILE keyword or mobile money phone number prefixes.
      *
      * @param message the transfer command message
-     * @return true if MOBILE is specified, false otherwise
+     * @return true if MOBILE is specified or if recipient is a mobile money number, false otherwise
      */
     public boolean isMobileTransfer(String message) {
         if (message == null) {
             return false;
         }
 
-        return message.trim().toUpperCase().contains("MOBILE");
+        // Check for explicit MOBILE keyword
+        if (message.trim().toUpperCase().contains(" MOBILE")) {
+            return true;
+        }
+
+        // Check for mobile money operator keywords
+        if (message.toUpperCase().contains(" YAS ") || message.toUpperCase().contains(" MOOV ")) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Detects if a phone number belongs to a mobile money operator based on prefix.
+     * Togo prefixes:
+     * - Moov: 92, 93, 94, 95, 96, 97, 98, 99
+     * - Yas (Togocom): 90, 91
+     *
+     * @param phoneNumber the phone number to check
+     * @return the mobile money operator name, or null if not a mobile money number
+     */
+    public String detectMobileMoneyOperator(String phoneNumber) {
+        if (phoneNumber == null || phoneNumber.isEmpty()) {
+            return null;
+        }
+
+        // Normalize phone number (remove + and spaces)
+        String normalized = phoneNumber.replaceAll("[+\\s]", "");
+
+        // Check if it's a Togo number (starts with 228)
+        if (normalized.startsWith("228") && normalized.length() >= 11) {
+            // Extract the two digits after country code (e.g., 22890xxxxx -> 90)
+            String operatorPrefix = normalized.substring(3, 5);
+
+            // Moov Africa prefixes: 92-99
+            if (operatorPrefix.matches("^(9[2-9])$")) {
+                return "MOOV";
+            }
+
+            // Yas (Togocom) prefixes: 90-91
+            if (operatorPrefix.matches("^(90|91)$")) {
+                return "YAS";
+            }
+        }
+
+        // For local format without country code (8 digits starting with 9)
+        if (normalized.length() == 8 && normalized.startsWith("9")) {
+            String operatorPrefix = normalized.substring(0, 2);
+
+            // Moov Africa prefixes: 92-99
+            if (operatorPrefix.matches("^(9[2-9])$")) {
+                return "MOOV";
+            }
+
+            // Yas (Togocom) prefixes: 90-91
+            if (operatorPrefix.matches("^(90|91)$")) {
+                return "YAS";
+            }
+        }
+
+        return null;
     }
 }

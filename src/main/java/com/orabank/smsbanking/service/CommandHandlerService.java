@@ -326,11 +326,9 @@ public class CommandHandlerService {
             
             // Parser normal pour les autres cas (sans OTP)
             Matcher transferMatcher = TRANSFER_PATTERN.matcher(trimmedMessage);
-            boolean isMobileMoney = false;
 
             if (transferMatcher.matches() && otpCode == null) {
                 sourceAccountNumber = transferMatcher.group(2);
-                isMobileMoney = "MOBILE".equalsIgnoreCase(transferMatcher.group(3));
             }
 
             Long amountLong = smsParser.extractTransferAmount(rawMessage);
@@ -359,6 +357,17 @@ public class CommandHandlerService {
             log.info("OTP vérifié avec succès pour le numéro masqué: {}", LoggingUtil.maskPhoneNumber(normalizedPhone));
 
             String recipientPhoneRaw = smsParser.extractRecipientPhone(rawMessage);
+            
+            // Detect if this is a mobile money transfer based on phone number prefix
+            String mobileOperator = null;
+            if (recipientPhoneRaw != null) {
+                mobileOperator = smsParser.detectMobileMoneyOperator(recipientPhoneRaw);
+                log.info("Mobile Money operator detected: {} for phone: {}", mobileOperator, LoggingUtil.maskPhoneNumber(recipientPhoneRaw));
+            }
+            
+            // Also check explicit MOBILE keyword or operator keywords in message
+            boolean isMobileMoney = smsParser.isMobileTransfer(rawMessage) || mobileOperator != null;
+            
             if (recipientPhoneRaw == null && !isMobileMoney) {
                 return String.format("%s - Numéro du destinataire manquant. Exemple: TRANSFERT 50000 COMPTE002 +22890000003 OTP123456", smsPrefix);
             }
@@ -426,20 +435,27 @@ public class CommandHandlerService {
                     return String.format("%s - Montant maximum pour Mobile Money: 1 000 000 FCFA", smsPrefix);
                 }
 
+                // Determine operator for logging
+                String operatorInfo = mobileOperator != null ? " (" + mobileOperator + ")" : "";
+                
                 boolean success = mobileMoneyService.transferToMobileMoney(normalizedPhone, amount);
 
                 if (success) {
-                    log.info("Virement Mobile Money réussi - Émetteur: {}, Compte: {}, Montant: {} FCFA",
+                    log.info("Virement Mobile Money{} réussi - Émetteur: {}, Compte: {}, Montant: {} FCFA",
+                            operatorInfo,
                             LoggingUtil.maskPhoneNumber(normalizedPhone),
                             sourceAccount.getAccountNumber(), amount);
-                    return String.format("%s - Virement %d FCFA vers Mobile Money effectué depuis %s.",
-                            smsPrefix, amount.longValue(), sourceAccount.getAccountNumber());
+                    
+                    String operatorMessage = mobileOperator != null ? " vers " + mobileOperator : "";
+                    return String.format("%s - Virement %d FCFA%s vers Mobile Money effectué depuis %s.",
+                            smsPrefix, amount.longValue(), operatorMessage, sourceAccount.getAccountNumber());
                 } else {
-                    log.warn("Virement Mobile Money échoué - Émetteur: {}, Compte: {}, Montant: {} FCFA",
+                    log.warn("Virement Mobile Money{} échoué - Émetteur: {}, Compte: {}, Montant: {} FCFA",
+                            operatorInfo,
                             LoggingUtil.maskPhoneNumber(normalizedPhone),
                             sourceAccount.getAccountNumber(), amount);
-                    return String.format("%s - Échec du virement vers Mobile Money depuis %s.",
-                            smsPrefix, sourceAccount.getAccountNumber());
+                    return String.format("%s - Échec du virement vers Mobile Money%s depuis %s.",
+                            smsPrefix, operatorInfo, sourceAccount.getAccountNumber());
                 }
             } else {
                 //  APPEL DE LA NOUVELLE MÉTHODE AVEC VÉRIFICATION DU COMPTE DESTINATAIRE
@@ -496,9 +512,10 @@ public class CommandHandlerService {
                 "SOLDE? COMPTEXXX - Solde d'un compte spécifique\n" +
                 "HISTO COMPTEXXX - Historique d'un compte\n" +
                 "OTP - Generer code OTP\n" +
-                "TRANSFERT X COMPTEXXX +228... [COMPTEYYY] OTP123 - Virement avec OTP requis\n" +
+                "TRANSFERT X COMPTEXXX +228... [COMPTEYYY] OTP123 - Virement interne avec OTP requis\n" +
                 "TRANSFERT X +228... [COMPTEYYY] OTP123 - Virement simple avec OTP\n" +
                 "TRANSFERT X MOBILE - Virement Mobile Money (avec OTP)\n" +
+                "TRANSFERT X +22890XXXXXX OTP123 - Transfert automatique vers Yas/Moov selon préfixe\n" +
                 "HELP - Cette aide";
     }
 
