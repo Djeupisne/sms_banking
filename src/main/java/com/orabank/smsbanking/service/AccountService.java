@@ -288,6 +288,27 @@ public class AccountService {
         return transactions;
     }
 
+    /**
+     * Récupère toutes les transactions d'un client (tous comptes confondus)
+     * @param phoneNumber le numéro de téléphone du client
+     * @param limit le nombre maximum de transactions à retourner
+     * @return la liste des transactions triées par date décroissante
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW, readOnly = true)
+    public List<Transaction> getAllTransactionsByPhone(String phoneNumber, int limit) {
+        Client client = clientRepository.findByPhoneNumber(phoneNumber)
+                .orElseThrow(() -> new ClientNotFoundException(
+                        "Client non trouvé pour le numéro: " + LoggingUtil.maskPhoneNumber(phoneNumber)));
+
+        List<Transaction> transactions = transactionRepository
+                .findTopByClientIdOrderByCreatedAtDesc(client.getId(), limit);
+
+        log.info("Récupération historique global - Client: {}, Transactions: {}",
+                LoggingUtil.maskPhoneNumber(phoneNumber), transactions.size());
+
+        return transactions;
+    }
+
     @Transactional(propagation = Propagation.REQUIRES_NEW, readOnly = true)
     public List<Transaction> getTransactionsByAccountAndType(String phoneNumber, String accountNumber,
                                                              String type, int limit) {
