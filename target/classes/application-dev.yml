@@ -1,0 +1,152 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}
+    username: ${POSTGRES_USER}
+    password: ${POSTGRES_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    open-in-view: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        jdbc:
+          lob:
+            non_contextual_creation: true
+        connection:
+          autocommit: false
+        format_sql: false
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    validate-on-migrate: false
+  redis:
+    host: ${REDIS_HOST}
+    port: ${REDIS_PORT}
+    password: ${REDIS_PASSWORD}
+    ssl: false  # Redis Labs utilise souvent SSL, mais vérifiez
+    timeout: 5000ms
+    lettuce:
+      pool:
+        max-active: 8
+        max-idle: 8
+        min-idle: 0
+      shutdown-timeout: 100ms
+
+server:
+  port: ${PORT:8080}
+  address: 0.0.0.0
+  error:
+    include-message: always
+    include-binding-errors: always
+  tomcat:
+    connection-timeout: 20000
+    max-threads: 200
+    accesslog:
+      enabled: false
+
+# Configuration JWT
+jwt:
+  secret: ${JWT_SECRET}
+  expiration-ms: 3600000
+  reset-password:
+    secret: ${JWT_RESET_PASSWORD_SECRET}
+    expiration-ms: 1800000
+
+# Configuration SMS - désactivée pour la démo (pas de clés API réelles)
+moov:
+  sms:
+    enabled: ${MOOV_SMS_ENABLED:false}
+    api:
+      key: ${MOOV_SMS_API_KEY:demo_key}
+      secret: ${MOOV_SMS_API_SECRET:demo_secret}
+      url: ${MOOV_SMS_API_URL:https://api.moov.tg/sms/v1/send}
+    sender:
+      id: ${MOOV_SMS_SENDER_ID:ORABANK}
+
+togocel:
+  sms:
+    enabled: ${TOGOCEL_SMS_ENABLED:false}
+    api:
+      key: ${TOGOCEL_SMS_API_KEY:demo_key}
+      secret: ${TOGOCEL_SMS_API_SECRET:demo_secret}
+      url: ${TOGOCEL_SMS_API_URL:https://api.togocel.com/sms/v1/send}
+    sender:
+      id: ${TOGOCEL_SMS_SENDER_ID:ORABANK}
+
+sms:
+  gateway:
+    prefer:
+      moov: true
+
+# OTP Configuration
+otp:
+  length: 6
+  validity:
+    minutes: 5
+  master:
+    secret: ${OTP_MASTER_SECRET}
+
+# Encryption
+encryption:
+  key: ${ENCRYPTION_KEY}
+
+# Core Banking
+
+# Rate Limiting
+rate:
+  limit:
+    requests: ${RATE_LIMIT_MAX_REQUESTS:10}
+    window:
+      minutes: ${RATE_LIMIT_WINDOW_MINUTES:1}
+    redis:
+      enabled: ${RATE_LIMIT_REDIS_ENABLED:false}
+
+# Mobile Money - Désactivé pour la démo
+mobile-money:
+  max-amount: 500000
+  fees:
+    account-id: 1
+    percentage: 1.0
+    min-amount: 100
+    max-amount: 5000
+    enabled: false
+
+internal-transfer:
+  fees:
+    enabled: false
+    percentage: 0.5
+    min-amount: 50
+    max-amount: 2000
+    account-number: FEE_INTERNAL_TRANSFER_001
+
+# Logging pour débogage
+logging:
+  level:
+    com.orabank.smsbanking: DEBUG
+    org.springframework.web: DEBUG
+    org.hibernate.SQL: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+core:
+  banking:
+    base:
+      url: ${CORE_BANKING_BASE_URL:http://localhost:8081/api}
+    mock:
+      enabled: ${CORE_BANKING_MOCK_ENABLED:true}
+    connect:
+      timeout:
+        ms: 10000
+    read:
+      timeout:
+        ms: 30000
