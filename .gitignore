@@ -1,22 +1,20 @@
+```
 # Compiled and build artifacts
 *.class
 *.o
 *.obj
 *.out
-*.dll
-*.so
-*.a
-*.exe
+build/
+target/
 
 # Dependencies
+.gradle/
+.mypy_cache/
+.pytest_cache/
+__pycache__/
 node_modules/
 venv/
 .venv/
-__pycache__/
-.mypy_cache/
-.pytest_cache/
-target/
-.gradle/
 
 # Logs and temp files
 *.log
@@ -34,31 +32,12 @@ target/
 *.swp
 *.swo
 
-# System files
-.DS_Store
-Thumbs.db
-
-# Coverage
+# Coverage reports
 coverage/
 htmlcov/
 .coverage
 
-# Compressed files
-*.zip
-*.gz
-*.tar
-*.tgz
-*.bz2
-*.xz
-*.7z
-*.rar
-*.zst
-*.lz4
-*.lzh
-*.cab
-*.arj
-*.rpm
-*.deb
-*.Z
-*.lz
-*.lzo
+# System files
+.DS_Store
+Thumbs.db
+```
