@@ -19,7 +19,7 @@ public class SmsParser {
     // ============================================================
 
     private static final Pattern SOLDE_PATTERN = Pattern.compile("^SOLDE\\??(?:\\s|$)", Pattern.CASE_INSENSITIVE);
-    private static final Pattern HISTORY_PATTERN = Pattern.compile("^HISTO(?:RIQUE)?$", Pattern.CASE_INSENSITIVE);
+    private static final Pattern HISTORY_PATTERN = Pattern.compile("^HISTO(?:RIQUE)?(?:\\s|$)", Pattern.CASE_INSENSITIVE);
     private static final Pattern OTP_PATTERN = Pattern.compile("^OTP$", Pattern.CASE_INSENSITIVE);
     private static final Pattern HELP_PATTERN = Pattern.compile("^HELP$", Pattern.CASE_INSENSITIVE);
     private static final Pattern TRANSFER_PATTERN = Pattern.compile("^TRANSF(?:ER|ERT)\\s+\\d", Pattern.CASE_INSENSITIVE);
