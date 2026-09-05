@@ -46,8 +46,14 @@ public class CommandHandlerService {
             "(?i)^TRANSFERT\\s+(\\d+)(?:\\s+(\\w+))?\\s*$"
     );
     private static final Pattern HISTORY_PATTERN = Pattern.compile("(?i)^HISTO(?:\\s*(\\w+))?$");
+    
+    // Pattern flexible pour TRANSFERT avec OTP - accepte plusieurs formats:
+    // TRANSFERT 50000 COMPTE001 +22890000002 OTP918675
+    // TRANSFERT 50000 COMPTE001 +22890000002 OTP 918675
+    // TRANSFERT 50000 +22890000002 COMPTE001 OTP918675
+    // TRANSFERT 50000 COMPTE001 +22890000002 918675
     private static final Pattern TRANSFER_WITH_OTP_PATTERN = Pattern.compile(
-            "(?i)^TRANSFERT\\s+(\\d+)\\s+(\\w+)\\s+\\+(\\d+)\\s+(COMPTE\\d+)?\\s+(\\d{6})$"
+            "(?i)^TRANSFERT\\s+(\\d+)\\s+(?:COMPTE\\d+|\\+\\d+)\\s+(?:COMPTE\\d+|\\+\\d+)\\s+(?:OTP\\s*)?(\\d{6})$"
     );
     // MÉTHODES UTILITAIRES
 
@@ -310,7 +316,7 @@ public class CommandHandlerService {
             
             if (otpMatcher.matches()) {
                 // Format avec OTP: TRANSFERT MONT [COMPTE] [+PHONE] [COMPTEDEST] OTP
-                otpCode = otpMatcher.group(5);
+                otpCode = otpMatcher.group(2);
                 log.info("OTP extrait du message: {}", otpCode != null ? "****" : "null");
             }
             
