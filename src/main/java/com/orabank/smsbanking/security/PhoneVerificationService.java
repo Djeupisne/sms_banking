@@ -31,6 +31,9 @@ public class PhoneVerificationService {
     @Value("${otp.validity.minutes:5}")
     private int otpValidityMinutes;
     
+    @Value("${sms.mock.enabled:false}")
+    private boolean mockEnabled;
+    
     // Préfixe pour les clés Redis
     private static final String OTP_KEY_PREFIX = "otp:";
     
@@ -74,6 +77,37 @@ public class PhoneVerificationService {
         } catch (Exception e) {
             log.error("Error generating and sending OTP", e);
             return false;
+        }
+    }
+    
+    /**
+     * Génère un OTP et retourne le code directement (pour mode MOCK/testing).
+     * Utile pour les tests Postman sans consulter les logs.
+     *
+     * @param phoneNumber the phone number to generate OTP for
+     * @return Generated OTP code, or null if generation failed
+     */
+    public String generateOtpForTesting(String phoneNumber) {
+        try {
+            String normalizedPhone = SmsUtils.normalizePhoneNumber(phoneNumber);
+            if (normalizedPhone == null) {
+                log.error("Numéro de téléphone invalide: {}", phoneNumber);
+                return null;
+            }
+            
+            // Générer l'OTP
+            String otp = otpGenerator.generateOtp(normalizedPhone);
+            
+            // Stocker l'OTP dans Redis avec TTL
+            long validityMs = otpValidityMinutes * 60 * 1000L;
+            redisTemplate.opsForValue().set(OTP_KEY_PREFIX + normalizedPhone, otp, validityMs, TimeUnit.MILLISECONDS);
+            
+            log.info("OTP généré pour testing (masked-phone: {}): {}", LoggingUtil.maskPhoneNumber(normalizedPhone), otp);
+            
+            return otp;
+        } catch (Exception e) {
+            log.error("Error generating OTP for testing", e);
+            return null;
         }
     }
     

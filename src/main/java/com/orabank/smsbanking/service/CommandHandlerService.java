@@ -33,6 +33,9 @@ public class CommandHandlerService {
 
     @Value("${app.sms.prefix:ORABANK}")
     private String smsPrefix;
+    
+    @Value("${sms.mock.enabled:false}")
+    private boolean mockEnabled;
 
     
     // PATTERNS POUR LE PARSING DES COMMANDES
@@ -254,6 +257,18 @@ public class CommandHandlerService {
                 return String.format("%s - Numéro de téléphone invalide.", smsPrefix);
             }
 
+            // En mode MOCK, on retourne directement le code OTP dans la réponse
+            if (mockEnabled) {
+                String otpCode = phoneVerificationService.generateOtpForTesting(normalizedPhone);
+                if (otpCode != null) {
+                    log.info("MOCK MODE: Code OTP généré pour {}: {}", LoggingUtil.maskPhoneNumber(normalizedPhone), otpCode);
+                    return String.format("%s - Code OTP %s", smsPrefix, otpCode);
+                } else {
+                    return String.format("%s - Erreur lors de la génération de l'OTP.", smsPrefix);
+                }
+            }
+
+            // Mode réel : envoi par SMS
             boolean sent = phoneVerificationService.generateAndSendOtp(normalizedPhone);
 
             if (!sent) {
