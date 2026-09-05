@@ -38,13 +38,13 @@ public class CommandHandlerService {
     // PATTERNS POUR LE PARSING DES COMMANDES
     
 
-    private static final Pattern BALANCE_PATTERN = Pattern.compile("(?i)^SOLDE\\?\\s*(\\w+)?$");
+    private static final Pattern BALANCE_PATTERN = Pattern.compile("(?i)^SOLDE\\?(?:\\s*(\\w+))?$");
     private static final Pattern TRANSFER_PATTERN = Pattern.compile(
-            "(?i)^TRANSFERT\s+(\d+)\s*(\w+)?\s*(MOBILE)?$"
+            "(?i)^TRANSFERT\\s+(\\d+)(?:\\s+(\\w+))?\\s*$"
     );
-    private static final Pattern HISTORY_PATTERN = Pattern.compile("(?i)^HISTO\s*(\w+)?$");
+    private static final Pattern HISTORY_PATTERN = Pattern.compile("(?i)^HISTO(?:\\s*(\\w+))?$");
     private static final Pattern TRANSFER_WITH_OTP_PATTERN = Pattern.compile(
-            "(?i)^TRANSFERT\\s+(\\d+)\\s*(\\w+)?\\s*\\+?(\\d+)\\s*(COMPTE\\d+)?\\s*(\\d{6})$"
+            "(?i)^TRANSFERT\\s+(\\d+)\\s+(\\w+)\\s+\\+(\\d+)\\s+(COMPTE\\d+)?\\s+(\\d{6})$"
     );
     // MÉTHODES UTILITAIRES
 
