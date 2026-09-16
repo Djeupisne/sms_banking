@@ -174,8 +174,12 @@ class SmsParserTest {
         "'TRANSFER 50000 +2250123456789 MOBILE', true",
         "'TRANSFER 50000 mobile', true",
         "'TRANSFER 50000 Mobile', true",
-        "'TRANSFER 50000 +2250123456789', false",
-        "'TRANSFER 50000', false"
+        "'TRANSFER 50000 YAS', true",
+        "'TRANSFER 50000 MOOV', true",
+        "'TRANSFER 50000 +22890000001', false",
+        "'TRANSFER 50000', false",
+        "'YAS', false",
+        "'MOOV', false"
     })
     @DisplayName("Détection transfert Mobile Money")
     void testIsMobileTransfer(String message, boolean expected) {
@@ -186,6 +190,76 @@ class SmsParserTest {
     @DisplayName("isMobileTransfer - message null")
     void testIsMobileTransfer_Null() {
         assertFalse(smsParser.isMobileTransfer(null));
+    }
+
+    // ==================== Tests detectMobileMoneyOperator ====================
+
+    @ParameterizedTest
+    @CsvSource({
+        "'+22890000001', 'YAS'",
+        "'+22891000001', 'YAS'",
+        "'+22892000001', 'MOOV'",
+        "'+22899000001', 'MOOV'",
+        "'22890000001', 'YAS'",
+        "'90000001', 'YAS'",
+        "'92000001', 'MOOV'",
+        "'+22870000001', null",
+        "'+22880000001', null",
+        "'+2250123456789', null"
+    })
+    @DisplayName("Détection opérateur Mobile Money par préfixe")
+    void testDetectMobileMoneyOperator(String phoneNumber, String expectedOperator) {
+        assertEquals(expectedOperator, smsParser.detectMobileMoneyOperator(phoneNumber));
+    }
+
+    @Test
+    @DisplayName("detectMobileMoneyOperator - message null ou vide")
+    void testDetectMobileMoneyOperator_NullOrEmpty() {
+        assertNull(smsParser.detectMobileMoneyOperator(null));
+        assertNull(smsParser.detectMobileMoneyOperator(""));
+    }
+
+    // ==================== Tests extractSourceAccountNumber ====================
+
+    @ParameterizedTest
+    @CsvSource({
+        "'TRANSFERT 50000 COMPTE001 +22890000002 OTP123456', 'COMPTE001'",
+        "'TRANSFERT 50000 +22890000002 COMPTE001 OTP123456', 'COMPTE001'",
+        "'TRANSFERT 50000 COMPTE001 +22890000002 COMPTE002 OTP123456', 'COMPTE001'"
+    })
+    @DisplayName("Extraction compte source")
+    void testExtractSourceAccountNumber(String message, String expected) {
+        assertEquals(expected, smsParser.extractSourceAccountNumber(message));
+    }
+
+    @Test
+    @DisplayName("extractSourceAccountNumber - pas de compte source")
+    void testExtractSourceAccountNumber_NoSource() {
+        assertNull(smsParser.extractSourceAccountNumber("TRANSFERT 50000 +22890000002 OTP123456"));
+        assertNull(smsParser.extractSourceAccountNumber("SOLDE?"));
+        assertNull(smsParser.extractSourceAccountNumber(null));
+    }
+
+    // ==================== Tests extractTargetAccountNumber ====================
+
+    @ParameterizedTest
+    @CsvSource({
+        "'TRANSFERT 50000 COMPTE001 +22890000002 COMPTE002 OTP123456', 'COMPTE002'",
+        "'TRANSFERT 50000 +22890000002 COMPTE001 COMPTE002 OTP123456', 'COMPTE002'",
+        "'TRANSFERT 50000 COMPTE001 +22890000002 OTP123456', null"
+    })
+    @DisplayName("Extraction compte destinataire")
+    void testExtractTargetAccountNumber(String message, String expected) {
+        assertEquals(expected, smsParser.extractTargetAccountNumber(message));
+    }
+
+    @Test
+    @DisplayName("extractTargetAccountNumber - pas de compte destinataire")
+    void testExtractTargetAccountNumber_NoTarget() {
+        assertNull(smsParser.extractTargetAccountNumber("TRANSFERT 50000 COMPTE001 +22890000002 OTP123456"));
+        assertNull(smsParser.extractTargetAccountNumber("TRANSFERT 50000 +22890000002 OTP123456"));
+        assertNull(smsParser.extractTargetAccountNumber("SOLDE?"));
+        assertNull(smsParser.extractTargetAccountNumber(null));
     }
 
     // ==================== Tests de robustesse et cas limites ====================

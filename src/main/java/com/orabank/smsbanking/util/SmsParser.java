@@ -168,10 +168,10 @@ public class SmsParser {
 
     /**
      * Extracts the target account number from a transfer command.
-     * Le compte destinataire est le compte APRÈS le numéro de téléphone.
+     * Le compte destinataire est le DERNIER compte APRÈS le numéro de téléphone.
      * Gère les deux formats:
-     * - TRANSFERT 50000 COMPTE001 +228... COMPTE002 OTP123456
-     * - TRANSFERT 50000 +228... COMPTE001 COMPTE002 OTP123456
+     * - TRANSFERT 50000 COMPTE001 +228... COMPTE002 OTP123456 → retourne COMPTE002
+     * - TRANSFERT 50000 +228... COMPTE001 COMPTE002 OTP123456 → retourne COMPTE002
      *
      * @param message the transfer command message
      * @return the extracted target account number, or null if not found
@@ -193,31 +193,33 @@ public class SmsParser {
             }
         }
 
-        // Chercher un compte après le numéro de téléphone
+        // Chercher le DERNIER compte après le numéro de téléphone
+        String lastAccount = null;
         if (phoneIndex != -1) {
             for (int i = phoneIndex + 1; i < parts.length; i++) {
                 String part = parts[i];
-                
+
                 // Ignorer OTP et les codes à 6 chiffres
                 if (part.equalsIgnoreCase("OTP") || part.matches("^\\d{6}$")) {
                     continue;
                 }
-                
+
                 if (part.matches("^COMPTE\\d+$")) {
-                    return parts[i];
+                    lastAccount = parts[i];
                 }
             }
         }
 
-        return null;
+        return lastAccount;
     }
 
     /**
      * Checks if a transfer command specifies MOBILE transfer type.
-     * Detects MOBILE keyword or mobile money phone number prefixes.
+     * Detects MOBILE keyword or mobile money operator keywords (YAS, MOOV).
+     * Note: Does NOT check phone number prefixes - that's done by detectMobileMoneyOperator().
      *
      * @param message the transfer command message
-     * @return true if MOBILE is specified or if recipient is a mobile money number, false otherwise
+     * @return true if MOBILE, YAS, or MOOV keyword is specified, false otherwise
      */
     public boolean isMobileTransfer(String message) {
         if (message == null) {
@@ -229,8 +231,10 @@ public class SmsParser {
             return true;
         }
 
-        // Check for mobile money operator keywords
-        if (message.toUpperCase().contains(" YAS ") || message.toUpperCase().contains(" MOOV ")) {
+        // Check for mobile money operator keywords (with spaces to avoid false positives)
+        String upperMessage = message.toUpperCase();
+        if (upperMessage.contains(" YAS ") || upperMessage.contains(" YAS") || 
+            upperMessage.contains("MOOV ") || upperMessage.contains(" MOOV ")) {
             return true;
         }
 
