@@ -1,1 +1,12 @@
-(COMMANDES_SMS_BANKING.md is a markdown documentation file, which is source content that should not be ignored)
+```
+# Compiled and build artifacts
+*.class
+target/
+# Dependencies
+# Logs and temp files
+*.log
+# Environment
+.env
+.env.local
+*.env.*
+```

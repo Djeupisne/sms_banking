@@ -358,6 +358,10 @@ public class CommandHandlerService {
 
             String recipientPhoneRaw = smsParser.extractRecipientPhone(rawMessage);
             
+            // EXTRAIRE LE COMPTE DESTINATAIRE en premier pour déterminer la priorité
+            String recipientAccountNumber = smsParser.extractTargetAccountNumber(rawMessage);
+            log.info("Compte destinataire extrait: {}", recipientAccountNumber);
+            
             // Detect if this is a mobile money transfer based on phone number prefix
             String mobileOperator = null;
             if (recipientPhoneRaw != null) {
@@ -365,8 +369,12 @@ public class CommandHandlerService {
                 log.info("Mobile Money operator detected: {} for phone: {}", mobileOperator, LoggingUtil.maskPhoneNumber(recipientPhoneRaw));
             }
             
-            // Also check explicit MOBILE keyword or operator keywords in message
-            boolean isMobileMoney = smsParser.isMobileTransfer(rawMessage) || mobileOperator != null;
+            // RÈGLE DE PRIORITÉ : 
+            // 1. Si COMPTEXXX est présent APRÈS le numéro → TOUJOURS compte bancaire
+            // 2. Sinon, si mot-clé MOBILE/YAS/MOOV ou préfixe 90-99 → Mobile Money
+            // 3. Sinon → Compte bancaire par défaut
+            boolean hasRecipientAccount = recipientAccountNumber != null && !recipientAccountNumber.isEmpty();
+            boolean isMobileMoney = !hasRecipientAccount && (smsParser.isMobileTransfer(rawMessage) || mobileOperator != null);
             
             if (recipientPhoneRaw == null && !isMobileMoney) {
                 return String.format("%s - Numéro du destinataire manquant. Exemple: TRANSFERT 50000 COMPTE002 +22890000003 OTP123456", smsPrefix);
@@ -379,10 +387,6 @@ public class CommandHandlerService {
                     return String.format("%s - Numéro du destinataire invalide. Format attendu: +228XXXXXXXX", smsPrefix);
                 }
             }
-
-            //  EXTRAIRE LE COMPTE DESTINATAIRE (après le numéro de téléphone)
-            String recipientAccountNumber = smsParser.extractTargetAccountNumber(rawMessage);
-            log.info("Compte destinataire extrait: {}", recipientAccountNumber);
 
             if (recipientPhone != null && normalizedPhone.equals(recipientPhone)) {
                 return String.format("%s - Impossible de virer de l'argent vers votre propre compte.", smsPrefix);
